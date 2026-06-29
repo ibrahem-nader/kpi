@@ -1,0 +1,9 @@
+{
+  "name": "garment-kpi-render",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "cd frontend && npm ci && npm run build",
+    "start": "node proxy/index.js"
+  }
+}

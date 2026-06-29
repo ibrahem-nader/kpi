@@ -1,0 +1,116 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: clickup-proxy-secret
+  namespace: default
+type: Opaque
+stringData:
+  CLICKUP_TOKEN: "pk_your_token_here"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clickup-proxy
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clickup-proxy
+  template:
+    metadata:
+      labels:
+        app: clickup-proxy
+    spec:
+      containers:
+        - name: clickup-proxy
+          image: clickup-kpi-proxy:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3131
+          env:
+            - name: CLICKUP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: clickup-proxy-secret
+                  key: CLICKUP_TOKEN
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickup-proxy
+  namespace: default
+spec:
+  selector:
+    app: clickup-proxy
+  ports:
+    - port: 3131
+      targetPort: 3131
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kpi-dashboard
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kpi-dashboard
+  template:
+    metadata:
+      labels:
+        app: kpi-dashboard
+    spec:
+      initContainers:
+        - name: build
+          image: node:20-alpine
+          workingDir: /app
+          command: ["sh", "-c", "npm install && npm run build"]
+          volumeMounts:
+            - name: src
+              mountPath: /app
+            - name: dist
+              mountPath: /app/dist
+      containers:
+        - name: nginx
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: dist
+              mountPath: /usr/share/nginx/html
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"
+      volumes:
+        - name: src
+          configMap:
+            name: kpi-dashboard-src
+        - name: dist
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kpi-dashboard
+  namespace: default
+spec:
+  selector:
+    app: kpi-dashboard
+  ports:
+    - port: 80
+      targetPort: 80
+  type: ClusterIP

@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3131:3131"
+    environment:
+      - CLICKUP_TOKEN=${CLICKUP_TOKEN}
+      - PORT=3131
+    restart: unless-stopped
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "5173:5173"
+    command: sh -c "npm install && npm run dev -- --host"
+    environment:
+      - VITE_PROXY_URL=http://proxy:3131
+    depends_on:
+      - proxy
+    restart: unless-stopped

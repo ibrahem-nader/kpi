@@ -1,0 +1,63 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f0f10;
+  --bg2: #17171a;
+  --bg3: #1e1e22;
+  --bg-elevated: #24242a;
+  --border: rgba(255,255,255,0.07);
+  --border2: rgba(255,255,255,0.12);
+  --text: #f0f0f0;
+  --text2: #8a8a95;
+  --text3: #555560;
+  --accent: #4f7cff;
+  --green: #3ecf8e;
+  --amber: #f5a623;
+  --red: #f0524f;
+  --blue: #4f7cff;
+  --overlay: rgba(0,0,0,0.55);
+  --tooltip-bg: #1e1e22;
+  --tooltip-text: #f8fafc;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --font: 'IBM Plex Sans', sans-serif;
+  --mono: 'IBM Plex Mono', monospace;
+}
+
+:root[data-theme='light'] {
+  --bg: #f5f7fb;
+  --bg2: #ffffff;
+  --bg3: #eef2f8;
+  --bg-elevated: #e6ebf4;
+  --border: rgba(15, 23, 42, 0.08);
+  --border2: rgba(15, 23, 42, 0.16);
+  --text: #0f172a;
+  --text2: #475569;
+  --text3: #64748b;
+  --accent: #2563eb;
+  --green: #1f9d63;
+  --amber: #c67d00;
+  --red: #cf3f3f;
+  --blue: #2563eb;
+  --overlay: rgba(15, 23, 42, 0.22);
+  --tooltip-bg: #0f172a;
+  --tooltip-text: #f8fafc;
+}
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 14px;
+  line-height: 1.5;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+input, select, button {
+  font-family: var(--font);
+}
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
