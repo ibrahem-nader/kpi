@@ -137,24 +137,60 @@ function saveManualCompetencies(map) {
 
 function ManualCompetencyEditor({ member, values = {}, onChange, summaryScore }) {
   const sel = { background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', fontSize: 12, padding: '6px 10px', fontFamily: 'var(--font)', cursor: 'pointer' }
+  const [categoryFilter, setCategoryFilter] = useState('All')
+  const [expandedKeys, setExpandedKeys] = useState(() => Object.fromEntries(MANUAL_COMPETENCIES.map(item => [item.key, false])))
+  const filteredCompetencies = MANUAL_COMPETENCIES.filter(item => categoryFilter === 'All' || item.category === categoryFilter)
+
+  function toggleExpanded(key) {
+    setExpandedKeys(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
   return (
     <Card>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
         <SectionTitle><HelpLabel label="Manual competencies" /></SectionTitle>
-        <div style={{ fontSize: 12, color: 'var(--text2)' }}>
-          <HelpLabel label="Competency score" />: <span style={{ color: 'var(--text)', fontFamily: 'var(--mono)' }}>{summaryScore || '—'}/5</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {['All', 'Core', 'Functional'].map(option => (
+              <button
+                key={option}
+                onClick={() => setCategoryFilter(option)}
+                style={{
+                  ...sel,
+                  fontSize: 11,
+                  background: categoryFilter === option ? 'var(--accent)' : 'var(--bg3)',
+                  color: categoryFilter === option ? '#fff' : 'var(--text2)',
+                  border: `0.5px solid ${categoryFilter === option ? 'transparent' : 'var(--border2)'}`,
+                }}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text2)' }}>
+            <HelpLabel label="Competency score" />: <span style={{ color: 'var(--text)', fontFamily: 'var(--mono)' }}>{summaryScore || '—'}/5</span>
+          </div>
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        {MANUAL_COMPETENCIES.map(item => {
+        {filteredCompetencies.map(item => {
           const level = values[item.key] || ''
+          const expanded = !!expandedKeys[item.key]
           return (
             <div key={item.key} style={{ background: 'var(--bg3)', border: '0.5px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '12px 14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 6 }}>
                 <div style={{ fontSize: 12, color: 'var(--text)', fontWeight: 500 }}>
                   <HelpLabel label={item.title} text={`${item.category} competency. ${item.description}`} />
                 </div>
-                <span style={{ fontSize: 10, color: 'var(--text3)' }}>{item.category}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 10, color: 'var(--text3)' }}>{item.category}</span>
+                  <button
+                    onClick={() => toggleExpanded(item.key)}
+                    style={{ ...sel, fontSize: 11, padding: '4px 8px' }}
+                  >
+                    {expanded ? 'Hide' : 'Show'}
+                  </button>
+                </div>
               </div>
               <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10 }}>{item.description}</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
@@ -164,31 +200,33 @@ function ManualCompetencyEditor({ member, values = {}, onChange, summaryScore })
                 </select>
                 <span style={{ fontSize: 11, color: 'var(--text2)' }}>{level ? `Selected: Level ${level}` : 'Select a level from 1 to 5.'}</span>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {Object.entries(item.levels).map(([levelKey, bullets]) => {
-                  const active = String(level) === String(levelKey)
-                  return (
-                    <div
-                      key={levelKey}
-                      style={{
-                        border: `0.5px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
-                        background: active ? 'rgba(79,124,255,0.08)' : 'transparent',
-                        borderRadius: 'var(--radius-sm)',
-                        padding: '8px 10px',
-                      }}
-                    >
-                      <div style={{ fontSize: 11, fontWeight: 600, color: active ? 'var(--accent)' : 'var(--text2)', marginBottom: 6 }}>
-                        Level {levelKey}
+              {expanded && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {Object.entries(item.levels).map(([levelKey, bullets]) => {
+                    const active = String(level) === String(levelKey)
+                    return (
+                      <div
+                        key={levelKey}
+                        style={{
+                          border: `0.5px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+                          background: active ? 'rgba(79,124,255,0.08)' : 'transparent',
+                          borderRadius: 'var(--radius-sm)',
+                          padding: '8px 10px',
+                        }}
+                      >
+                        <div style={{ fontSize: 11, fontWeight: 600, color: active ? 'var(--accent)' : 'var(--text2)', marginBottom: 6 }}>
+                          Level {levelKey}
+                        </div>
+                        <ul style={{ margin: 0, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {bullets.map((bullet, idx) => (
+                            <li key={idx} style={{ fontSize: 11, color: 'var(--text3)' }}>{bullet}</li>
+                          ))}
+                        </ul>
                       </div>
-                      <ul style={{ margin: 0, paddingLeft: 16, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        {bullets.map((bullet, idx) => (
-                          <li key={idx} style={{ fontSize: 11, color: 'var(--text3)' }}>{bullet}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )
-                })}
-              </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )
         })}
@@ -439,8 +477,38 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
   const filtered = members
     .filter(m => assigneeFilter === 'all' || m.id == assigneeFilter)
 
+  function exportCompetenciesCsv() {
+    const headers = ['member_id', 'member_name', ...MANUAL_COMPETENCIES.map(item => item.key)]
+    const rows = members.map(member => {
+      const competencyValues = manualCompetencyMap[member.id] || {}
+      return [
+        member.id,
+        `"${String(member.username || member.email || '').replace(/"/g, '""')}"`,
+        ...MANUAL_COMPETENCIES.map(item => competencyValues[item.key] ?? ''),
+      ]
+    })
+    const csv = [headers.join(','), ...rows.map(row => row.join(','))].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'manual-competencies.csv'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          onClick={exportCompetenciesCsv}
+          style={{ background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', fontSize: 12, padding: '6px 10px', fontFamily: 'var(--font)', cursor: 'pointer' }}
+        >
+          Export competencies CSV
+        </button>
+      </div>
       {selectedMember && (
         <MemberDetail
           member={selectedMember}
