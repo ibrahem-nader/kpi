@@ -217,7 +217,7 @@ function summarizeEstimateTracked(tasks) {
   }
 }
 
-export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap = {}) {
+export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap = {}, manualCompetencies = {}) {
   const myTasks = tasks.filter(t => t.assignees?.some(a => a.id == memberId))
   const myBugs = bugTasks.filter(t => t.assignees?.some(a => a.id == memberId))
   const estimateTracked = summarizeEstimateTracked(myTasks)
@@ -293,7 +293,7 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
   const onTimeScore = scoreScale(onTimePct)
 
   const weights = { estimateAccuracy: 0.10, completion: 0.20, bug: 0.10, onTime: 0.10 }
-  let weightedScore = null
+  let kpiWeightedScore = null
   const parts = []
   if (estimateAccuracyScore !== null) parts.push({ s: estimateAccuracyScore, w: weights.estimateAccuracy })
   if (bugScore !== null) parts.push({ s: bugScore, w: weights.bug })
@@ -301,7 +301,29 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
   if (onTimeScore !== null) parts.push({ s: onTimeScore, w: weights.onTime })
   if (parts.length) {
     const totalW = parts.reduce((a, p) => a + p.w, 0)
-    weightedScore = (parts.reduce((a, p) => a + p.s * p.w, 0) / totalW).toFixed(1)
+    kpiWeightedScore = Math.round((parts.reduce((a, p) => a + p.s * p.w, 0) / totalW) * 10) / 10
+  }
+
+  const competencyLevels = Object.values(manualCompetencies || {})
+    .map(value => parseFloat(value))
+    .filter(value => value >= 1 && value <= 5)
+  const competencyScore = competencyLevels.length
+    ? Math.round((competencyLevels.reduce((sum, value) => sum + value, 0) / competencyLevels.length) * 10) / 10
+    : null
+
+  let weightedScore = null
+  let totalWeightedParts = 0
+  let totalWeightedValue = 0
+  if (kpiWeightedScore !== null) {
+    totalWeightedValue += kpiWeightedScore * 0.7
+    totalWeightedParts += 0.7
+  }
+  if (competencyScore !== null) {
+    totalWeightedValue += competencyScore * 0.3
+    totalWeightedParts += 0.3
+  }
+  if (totalWeightedParts > 0) {
+    weightedScore = (Math.round((totalWeightedValue / totalWeightedParts) * 10) / 10).toFixed(1)
   }
 
   const avgLeadTimeDays = avgLeadTime ? msToDays(avgLeadTime) : null
@@ -414,6 +436,9 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
     bugScore,
     completionScore,
     onTimeScore,
+    kpiWeightedScore: kpiWeightedScore !== null ? kpiWeightedScore.toFixed(1) : null,
+    competencyScore: competencyScore !== null ? competencyScore.toFixed(1) : null,
+    competencyLevelsFilled: competencyLevels.length,
     weightedScore,
     avgCycleTimeDays:     avgCycleTime     ? msToDays(avgCycleTime)     : null,
     avgFullCycleTimeDays: avgFullCycleTime ? msToDays(avgFullCycleTime) : null,

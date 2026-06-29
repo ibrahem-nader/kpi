@@ -79,7 +79,10 @@ const HELP_TEXT = {
   'Main work type': 'The most common inferred work type for this member in the selected period.',
   'Overdue open': 'Open tasks assigned to the member whose due date has passed.',
   'Bug volume': 'Count of tasks classified as bugs for the selected scope or member.',
-  'Weighted score': 'Final 1-5 score based on four KPI scores only: completion rate 20%, estimate accuracy 10%, on-time delivery 10%, and bug fix rate 10%. If one metric is missing, the available weights are re-normalized instead of counting the missing metric as zero.',
+  'Weighted score': 'Final 1-5 score. KPI score contributes 70% and manual competency score contributes 30%. The KPI score itself is based on completion rate 20%, estimate accuracy 10%, on-time delivery 10%, and bug fix rate 10%, re-normalized when some KPI signals are missing.',
+  'KPI score': 'The task-based 1-5 score only, before blending with manual competencies. This score uses completion rate, estimate accuracy, on-time delivery, and bug fix rate.',
+  'Competency score': 'Average manual level across the six selected competencies on a 1-5 scale.',
+  'Manual competencies': 'Manager-entered core and functional competency levels. These manual competency levels contribute 30% of the final score.',
 }
 
 export function HelpLabel({ label, text }) {
