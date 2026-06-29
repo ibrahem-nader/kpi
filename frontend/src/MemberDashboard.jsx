@@ -293,7 +293,7 @@ function MemberCard({ member, index, tasks, bugTasks, onSelect, selected, cycleT
   )
 }
 
-function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap = {}, manualCompetencies = {}, onCompetencyChange }) {
+function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap = {}, manualCompetencies = {}, onCompetencyChange, onClose }) {
   const [taskListState, setTaskListState] = useState(null)
   const kpi = useMemo(() => calcMemberKPIs(member.id, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies), [member, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies])
 
@@ -335,6 +335,22 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
           <div style={{ fontSize: 12, color: 'var(--text3)' }}>{kpi.totalTasks} assigned tasks</div>
         </div>
         <div style={{ marginLeft: 'auto', textAlign: 'right', minWidth: 180 }}>
+          <button
+            onClick={onClose}
+            style={{
+              background: 'var(--bg3)',
+              border: '0.5px solid var(--border2)',
+              borderRadius: 'var(--radius-sm)',
+              color: 'var(--text2)',
+              fontSize: 11,
+              padding: '5px 8px',
+              fontFamily: 'var(--font)',
+              cursor: 'pointer',
+              marginBottom: 8,
+            }}
+          >
+            Close
+          </button>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}><HelpLabel label="Weighted score" /></div>
           <ScoreBadge score={kpi.weightedScore} />
           <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>
@@ -519,6 +535,7 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
           cycleMetaMap={cycleMetaMap}
           manualCompetencies={manualCompetencyMap[selectedMember.id] || {}}
           onCompetencyChange={updateCompetency}
+          onClose={() => setSelectedMember(null)}
         />
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12 }}>
