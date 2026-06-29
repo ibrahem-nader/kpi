@@ -2,14 +2,15 @@ import React, { useState } from 'react'
 import { ErrorBox } from './components.jsx'
 
 const STORAGE_KEY = 'kpi_dashboard_config'
+const RUNTIME_CONFIG = typeof window !== 'undefined' ? (window.__APP_CONFIG__ || {}) : {}
 
 const ENV_CONFIG = {
   token:         import.meta.env.VITE_CLICKUP_TOKEN    || '',
-  teamId:        import.meta.env.VITE_TEAM_ID          || '',
-  groupId:       import.meta.env.VITE_GROUP_ID         || '',
-  bugsListId:    import.meta.env.VITE_BUGS_LIST_ID     || '',
-  backlogListId: import.meta.env.VITE_BACKLOG_LIST_ID  || '',
-  sprintParentId:import.meta.env.VITE_SPRINT_PARENT_ID || '',
+  teamId:        RUNTIME_CONFIG.teamId        || import.meta.env.VITE_TEAM_ID          || '',
+  groupId:       RUNTIME_CONFIG.groupId       || import.meta.env.VITE_GROUP_ID         || '',
+  bugsListId:    RUNTIME_CONFIG.bugsListId    || import.meta.env.VITE_BUGS_LIST_ID     || '',
+  backlogListId: RUNTIME_CONFIG.backlogListId || import.meta.env.VITE_BACKLOG_LIST_ID  || '',
+  sprintParentId:RUNTIME_CONFIG.sprintParentId|| import.meta.env.VITE_SPRINT_PARENT_ID || '',
 }
 
 const ENV_COMPLETE = ENV_CONFIG.teamId
@@ -48,7 +49,10 @@ export function ConfigScreen({ onConnect, prefill }) {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const set = k => e => setForm(f => ({ ...f, [k]: e.target.value.trim() }))
+  const set = k => e => {
+    setError(null)
+    setForm(f => ({ ...f, [k]: e.target.value.trim() }))
+  }
 
   async function connect() {
     if (!form.teamId) { setError('Team ID is required.'); return }

@@ -8,6 +8,13 @@ const CLICKUP_BASE = 'api.clickup.com';
 const CLICKUP_TOKEN = process.env.CLICKUP_TOKEN || '';
 const FRONTEND_DIST = path.resolve(__dirname, '../frontend/dist');
 const INDEX_HTML = path.join(FRONTEND_DIST, 'index.html');
+const RUNTIME_APP_CONFIG = {
+  teamId: process.env.TEAM_ID || process.env.VITE_TEAM_ID || '',
+  groupId: process.env.GROUP_ID || process.env.VITE_GROUP_ID || '',
+  bugsListId: process.env.BUGS_LIST_ID || process.env.VITE_BUGS_LIST_ID || '',
+  backlogListId: process.env.BACKLOG_LIST_ID || process.env.VITE_BACKLOG_LIST_ID || '',
+  sprintParentId: process.env.SPRINT_PARENT_ID || process.env.VITE_SPRINT_PARENT_ID || '',
+};
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -56,6 +63,12 @@ const server = http.createServer((req, res) => {
 
   if (req.url === '/health') {
     sendJson(res, 200, { status: 'ok' });
+    return;
+  }
+
+  if (req.url === '/app-config.js') {
+    res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' });
+    res.end(`window.__APP_CONFIG__ = ${JSON.stringify(RUNTIME_APP_CONFIG)};`);
     return;
   }
 
