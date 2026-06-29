@@ -147,10 +147,10 @@ function ManualCompetencyEditor({ member, values = {}, onChange, summaryScore })
 
   return (
     <Card>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
         <SectionTitle><HelpLabel label="Manual competencies" /></SectionTitle>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {['All', 'Core', 'Functional'].map(option => (
               <button
                 key={option}
@@ -172,13 +172,13 @@ function ManualCompetencyEditor({ member, values = {}, onChange, summaryScore })
           </div>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 12 }}>
         {filteredCompetencies.map(item => {
           const level = values[item.key] || ''
           const expanded = !!expandedKeys[item.key]
           return (
             <div key={item.key} style={{ background: 'var(--bg3)', border: '0.5px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '12px 14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 12, color: 'var(--text)', fontWeight: 500 }}>
                   <HelpLabel label={item.title} text={`${item.category} competency. ${item.description}`} />
                 </div>
@@ -193,7 +193,7 @@ function ManualCompetencyEditor({ member, values = {}, onChange, summaryScore })
                 </div>
               </div>
               <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10 }}>{item.description}</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
                 <select value={level} onChange={e => onChange(member.id, item.key, e.target.value)} style={sel}>
                   <option value="">Not set</option>
                   {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>Level {n}</option>)}
@@ -280,7 +280,7 @@ function MemberCard({ member, index, tasks, bugTasks, onSelect, selected, cycleT
         <HelpLabel label="KPI score" /> {kpi.kpiWeightedScore || '—'}/5 · <HelpLabel label="Competency score" /> {kpi.competencyScore || '—'}/5
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, paddingTop: 10, borderTop: '0.5px solid var(--border)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginTop: 12, paddingTop: 10, borderTop: '0.5px solid var(--border)' }}>
         <span style={{ fontSize: 11, color: 'var(--text3)' }}>{kpi.estimatedHours}h est · {kpi.trackedHours}h tracked</span>
         <span style={{ fontSize: 11, color: 'var(--text3)' }}>
           {kpi.avgCycleTimeDays !== null ? `dev ${kpi.avgCycleTimeDays}d` : ''}{kpi.avgFullCycleTimeDays !== null ? ` · full ${kpi.avgFullCycleTimeDays}d` : ''}
@@ -328,13 +328,13 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
   return (
     <>
     <Card style={{ borderColor: ACCENT }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         <Avatar name={member.username || member.email} index={index} />
         <div>
           <div style={{ fontSize: 16, fontWeight: 500 }}>{member.username || member.email}</div>
           <div style={{ fontSize: 12, color: 'var(--text3)' }}>{kpi.totalTasks} assigned tasks</div>
         </div>
-        <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+        <div style={{ marginLeft: 'auto', textAlign: 'right', minWidth: 180 }}>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}><HelpLabel label="Weighted score" /></div>
           <ScoreBadge score={kpi.weightedScore} />
           <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>
@@ -343,7 +343,7 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
         <div>
           <SectionTitle>KPI scores</SectionTitle>
           <div style={{ height: 180 }}>
@@ -372,7 +372,7 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14, marginTop: 14 }}>
         <div>
           <SectionTitle>Work mix (main tasks)</SectionTitle>
           <div style={{ height: 180 }}>
@@ -402,7 +402,7 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
 
       <div style={{ marginTop: 14 }}>
         <SectionTitle>Task Evidence · H1 2026</SectionTitle>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14 }}>
           <CompetencyCard title="Execution" competency={kpi.competencies.execution} />
           <CompetencyCard title="Planning" competency={kpi.competencies.planning} />
           <CompetencyCard title="Quality Ownership" competency={kpi.competencies.quality} />
@@ -419,7 +419,7 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
         />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14, marginTop: 14 }}>
         <div>
           <SectionTitle>Time</SectionTitle>
           <StatRow label="Estimated" value={`${kpi.estimatedHours}h`} mono />
@@ -501,7 +501,7 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8 }}>
         <button
           onClick={exportCompetenciesCsv}
           style={{ background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', fontSize: 12, padding: '6px 10px', fontFamily: 'var(--font)', cursor: 'pointer' }}
