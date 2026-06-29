@@ -287,10 +287,10 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
     : null
   const throughputPerWeek = windowDays ? Math.round((doneTasks.length / (windowDays / 7)) * 10) / 10 : null
 
-  const estimateAccuracyScore = scoreScale(estimateAccuracyPct)
+  const estimateAccuracyScore = scoreScale(estimateAccuracyPct, [90, 80, 70, 60])
   const bugScore = scoreScale(bugPct)
   const completionScore = scoreScale(completionPct)
-  const onTimeScore = scoreScale(onTimePct)
+  const onTimeScore = scoreScale(onTimePct, [90, 80, 70, 60])
 
   const weights = { estimateAccuracy: 0.10, completion: 0.20, bug: 0.10, onTime: 0.10 }
   let kpiWeightedScore = null
