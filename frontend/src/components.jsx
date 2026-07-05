@@ -79,10 +79,12 @@ const HELP_TEXT = {
   'Main work type': 'The most common inferred work type for this member in the selected period.',
   'Overdue open': 'Open tasks assigned to the member whose due date has passed.',
   'Bug volume': 'Count of tasks classified as bugs for the selected scope or member.',
-  'Weighted score': 'Final 1-5 score. KPI score contributes 70% and manual competency score contributes 30%. The KPI score itself is based on completion rate 20%, estimate accuracy 10%, on-time delivery 10%, and bug fix rate 10%, re-normalized when some KPI signals are missing.',
-  'KPI score': 'The task-based 1-5 score only, before blending with manual competencies. This score uses completion rate, estimate accuracy, on-time delivery, and bug fix rate.',
-  'Competency score': 'Average manual level across the six selected competencies on a 1-5 scale.',
-  'Manual competencies': 'Manager-entered core and functional competency levels. These manual competency levels contribute 30% of the final score.',
+  'Weighted score': 'Final 1-5 score. KPI score contributes 70% and manual competency score contributes 30%. The KPI score itself is an equal-weight average of completion rate, estimate accuracy, on-time delivery, and bug fix rate, re-normalized when some KPI signals are missing.',
+  'KPI score': 'The task-based 1-5 score only, before blending with manual competencies. It averages completion rate, estimate accuracy, on-time delivery, and bug fix rate equally.',
+  'Competency score': 'Combined manual competency score on a 1-5 scale. Non-discipline competencies share 25/30 of this score, while Discipline contributes 5/30. If only one side is filled, the score re-normalizes to the available inputs.',
+  'Manual competency block': 'Average of the non-discipline manual competencies on a 1-5 scale. This block represents 25/30 of the competency portion.',
+  'Discipline score': 'Manual discipline level on a 1-5 scale. This represents 5/30 of the competency portion.',
+  'Manual competencies': 'Manager-entered competency levels. Core and functional competencies are grouped into the 25/30 competency block, while Discipline is scored separately as the remaining 5/30.',
 }
 
 export function HelpLabel({ label, text }) {

@@ -121,6 +121,19 @@ const MANUAL_COMPETENCIES = [
       5: ['Sets organisational standards for quality, accuracy, and thoroughness', 'Drives a culture of precision and quality consciousness across teams', 'Designs systems and processes that reduce errors at scale', 'Holds the organisation accountable for high-quality output', 'Balances strategic thinking with the discipline of detail-oriented execution'],
     },
   },
+  {
+    key: 'discipline',
+    title: 'Discipline',
+    category: 'Discipline',
+    description: 'Consistency in following work rules, attendance, commitments, professional conduct, and day-to-day execution discipline.',
+    levels: {
+      1: ['Frequently misses commitments or basic work expectations', 'Needs close follow-up to respect process, attendance, or task discipline', 'Work habits regularly affect reliability or team trust'],
+      2: ['Usually follows expectations but still needs reminders', 'Shows partial consistency in attendance, process, or delivery discipline', 'Can lose focus on routine execution standards under pressure'],
+      3: ['Reliably follows work rules, commitments, and team process', 'Maintains consistent professional conduct and dependable execution habits', 'Handles normal delivery pressure without breaking routine discipline'],
+      4: ['Acts as a strong example in consistency, punctuality, and execution discipline', 'Protects team standards and helps others stay aligned to commitments', 'Maintains disciplined execution even during high-pressure periods'],
+      5: ['Sets the benchmark for professional discipline across the team', 'Drives a culture of consistency, accountability, and dependable execution', 'Can be trusted to uphold standards without supervision in difficult situations'],
+    },
+  },
 ]
 
 function loadManualCompetencies() {
@@ -135,7 +148,7 @@ function saveManualCompetencies(map) {
   localStorage.setItem(COMPETENCY_STORAGE_KEY, JSON.stringify(map))
 }
 
-function ManualCompetencyEditor({ member, values = {}, onChange, summaryScore }) {
+function ManualCompetencyEditor({ member, values = {}, onChange, summaryScore, manualScore, disciplineScore }) {
   const sel = { background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', fontSize: 12, padding: '6px 10px', fontFamily: 'var(--font)', cursor: 'pointer' }
   const [categoryFilter, setCategoryFilter] = useState('All')
   const [expandedKeys, setExpandedKeys] = useState(() => Object.fromEntries(MANUAL_COMPETENCIES.map(item => [item.key, false])))
@@ -151,7 +164,7 @@ function ManualCompetencyEditor({ member, values = {}, onChange, summaryScore })
         <SectionTitle><HelpLabel label="Manual competencies" /></SectionTitle>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {['All', 'Core', 'Functional'].map(option => (
+            {['All', 'Core', 'Functional', 'Discipline'].map(option => (
               <button
                 key={option}
                 onClick={() => setCategoryFilter(option)}
@@ -169,6 +182,12 @@ function ManualCompetencyEditor({ member, values = {}, onChange, summaryScore })
           </div>
           <div style={{ fontSize: 12, color: 'var(--text2)' }}>
             <HelpLabel label="Competency score" />: <span style={{ color: 'var(--text)', fontFamily: 'var(--mono)' }}>{summaryScore || '—'}/5</span>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text2)' }}>
+            <HelpLabel label="Manual competency block" />: <span style={{ color: 'var(--text)', fontFamily: 'var(--mono)' }}>{manualScore || '—'}/5</span>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text2)' }}>
+            <HelpLabel label="Discipline score" />: <span style={{ color: 'var(--text)', fontFamily: 'var(--mono)' }}>{disciplineScore || '—'}/5</span>
           </div>
         </div>
       </div>
@@ -264,10 +283,10 @@ function MemberCard({ member, index, tasks, bugTasks, onSelect, selected, cycleT
         </div>
       </div>
 
-      <KpiRow label="Completion rate" pct={kpi.sprintCompletionPct} score={kpi.completionScore} weight="20%" />
-      <KpiRow label="Estimate accuracy" pct={kpi.estimateAccuracyPct} score={kpi.estimateAccuracyScore} weight="10%" />
-      <KpiRow label="On-time delivery" pct={kpi.onTimePct} score={kpi.onTimeScore} weight="10%" />
-      <KpiRow label="Bug fix rate" pct={kpi.bugPct} score={kpi.bugScore} weight="10%" />
+      <KpiRow label="Completion rate" pct={kpi.sprintCompletionPct} score={kpi.completionScore} weight="25%" />
+      <KpiRow label="Estimate accuracy" pct={kpi.estimateAccuracyPct} score={kpi.estimateAccuracyScore} weight="25%" />
+      <KpiRow label="On-time delivery" pct={kpi.onTimePct} score={kpi.onTimeScore} weight="25%" />
+      <KpiRow label="Bug fix rate" pct={kpi.bugPct} score={kpi.bugScore} weight="25%" />
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
         <CompetencyBadge level={kpi.competencies.execution.level} />
@@ -432,6 +451,8 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
           values={manualCompetencies}
           onChange={onCompetencyChange}
           summaryScore={kpi.competencyScore}
+          manualScore={kpi.manualCompetencyScore}
+          disciplineScore={kpi.disciplineScore}
         />
       </div>
 

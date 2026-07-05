@@ -292,7 +292,7 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
   const completionScore = scoreScale(completionPct)
   const onTimeScore = scoreScale(onTimePct, [90, 80, 70, 60])
 
-  const weights = { estimateAccuracy: 0.10, completion: 0.20, bug: 0.10, onTime: 0.10 }
+  const weights = { estimateAccuracy: 0.25, completion: 0.25, bug: 0.25, onTime: 0.25 }
   let kpiWeightedScore = null
   const parts = []
   if (estimateAccuracyScore !== null) parts.push({ s: estimateAccuracyScore, w: weights.estimateAccuracy })
@@ -304,12 +304,30 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
     kpiWeightedScore = Math.round((parts.reduce((a, p) => a + p.s * p.w, 0) / totalW) * 10) / 10
   }
 
-  const competencyLevels = Object.values(manualCompetencies || {})
-    .map(value => parseFloat(value))
+  const disciplineValue = parseFloat(manualCompetencies?.discipline)
+  const disciplineScore = disciplineValue >= 1 && disciplineValue <= 5 ? disciplineValue : null
+  const manualCompetencyLevels = Object.entries(manualCompetencies || {})
+    .filter(([key]) => key !== 'discipline')
+    .map(([, value]) => parseFloat(value))
     .filter(value => value >= 1 && value <= 5)
-  const competencyScore = competencyLevels.length
-    ? Math.round((competencyLevels.reduce((sum, value) => sum + value, 0) / competencyLevels.length) * 10) / 10
+  const manualCompetencyScore = manualCompetencyLevels.length
+    ? Math.round((manualCompetencyLevels.reduce((sum, value) => sum + value, 0) / manualCompetencyLevels.length) * 10) / 10
     : null
+
+  let competencyScore = null
+  let competencyWeightedValue = 0
+  let competencyWeightedParts = 0
+  if (manualCompetencyScore !== null) {
+    competencyWeightedValue += manualCompetencyScore * 25
+    competencyWeightedParts += 25
+  }
+  if (disciplineScore !== null) {
+    competencyWeightedValue += disciplineScore * 5
+    competencyWeightedParts += 5
+  }
+  if (competencyWeightedParts > 0) {
+    competencyScore = Math.round((competencyWeightedValue / competencyWeightedParts) * 10) / 10
+  }
 
   let weightedScore = null
   let totalWeightedParts = 0
@@ -438,7 +456,9 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
     onTimeScore,
     kpiWeightedScore: kpiWeightedScore !== null ? kpiWeightedScore.toFixed(1) : null,
     competencyScore: competencyScore !== null ? competencyScore.toFixed(1) : null,
-    competencyLevelsFilled: competencyLevels.length,
+    manualCompetencyScore: manualCompetencyScore !== null ? manualCompetencyScore.toFixed(1) : null,
+    disciplineScore: disciplineScore !== null ? disciplineScore.toFixed(1) : null,
+    competencyLevelsFilled: manualCompetencyLevels.length + (disciplineScore !== null ? 1 : 0),
     weightedScore,
     avgCycleTimeDays:     avgCycleTime     ? msToDays(avgCycleTime)     : null,
     avgFullCycleTimeDays: avgFullCycleTime ? msToDays(avgFullCycleTime) : null,
