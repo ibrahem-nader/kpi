@@ -197,9 +197,9 @@ function scoreColor(score) {
 }
 
 export function KpiRow({ label, pct, score, weight, displayValue, barPct }) {
-  if ((pct === null || pct === undefined) && (displayValue === null || displayValue === undefined)) return null
+  if ((pct === null || pct === undefined) && (displayValue === null || displayValue === undefined) && (score === null || score === undefined)) return null
   const resolvedBarPct = barPct ?? pct
-  const valueText = displayValue ?? `${pct}%`
+  const valueText = displayValue ?? (pct !== null && pct !== undefined ? `${pct}%` : '')
   const color = score !== null && score !== undefined ? scoreColor(score) : (pct >= 90 ? '#3ecf8e' : pct >= 75 ? '#4f7cff' : pct >= 60 ? '#f5a623' : '#f0524f')
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '0.5px solid var(--border)' }}>
