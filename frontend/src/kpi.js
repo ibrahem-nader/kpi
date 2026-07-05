@@ -196,22 +196,58 @@ function avgDefined(values) {
   return Math.round(defined.reduce((a, b) => a + b, 0) / defined.length)
 }
 
+function getParentId(task) {
+  if (!task?.parent) return null
+  if (typeof task.parent === 'object') return task.parent.id || null
+  return task.parent
+}
+
+function buildTaskLookup(...taskLists) {
+  const lookup = {}
+  taskLists.flat().filter(Boolean).forEach(task => {
+    lookup[task.id] = task
+  })
+  return lookup
+}
+
+function getEffectiveEstimate(task, taskLookup = {}, taskIdsInScope = new Set()) {
+  const ownEstimate = parseInt(task?.time_estimate) || 0
+  if (ownEstimate > 0) return ownEstimate
+  const parentId = getParentId(task)
+  if (!parentId) return 0
+  if (taskIdsInScope.has(parentId)) return 0
+  return parseInt(taskLookup[parentId]?.time_estimate) || 0
+}
+
+function getEffectiveDue(task, taskLookup = {}) {
+  const ownDueMs = parseInt(task?.due_date) || null
+  if (ownDueMs) {
+    return { dueMs: ownDueMs, dueDateTime: !!task?.due_date_time }
+  }
+  const parentId = getParentId(task)
+  if (!parentId) return { dueMs: null, dueDateTime: false }
+  const parent = taskLookup[parentId]
+  const parentDueMs = parseInt(parent?.due_date) || null
+  return { dueMs: parentDueMs, dueDateTime: !!parent?.due_date_time }
+}
+
 function sameOrBeforeDate(doneMs, dueMs) {
   const doneDate = new Date(doneMs).toISOString().slice(0, 10)
   const dueDate = new Date(dueMs).toISOString().slice(0, 10)
   return doneDate <= dueDate
 }
 
-function isTaskOnTime(task, doneMs, dueMs) {
+function isTaskOnTime(task, doneMs, dueMs, dueDateTime = task?.due_date_time) {
   if (!doneMs || !dueMs) return false
-  if (task.due_date_time) return doneMs <= dueMs
+  if (dueDateTime) return doneMs <= dueMs
   return sameOrBeforeDate(doneMs, dueMs)
 }
 
-function summarizeEstimateTracked(tasks) {
+function summarizeEstimateTracked(tasks, taskLookup = {}) {
   const parentTasks = tasks.filter(t => !t.parent)
   const subTasks = tasks.filter(t => t.parent)
-  const sumEst = list => list.reduce((s, t) => s + (parseInt(t.time_estimate) || 0), 0)
+  const taskIdsInScope = new Set(tasks.map(t => t.id))
+  const sumEst = list => list.reduce((s, t) => s + getEffectiveEstimate(t, taskLookup, taskIdsInScope), 0)
   const sumTracked = list => list.reduce((s, t) => s + (t.time_spent || 0), 0)
 
   return {
@@ -227,9 +263,10 @@ function summarizeEstimateTracked(tasks) {
 }
 
 export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap = {}, manualCompetencies = {}, manualKpis = {}) {
+  const taskLookup = buildTaskLookup(tasks, bugTasks)
   const myTasks = tasks.filter(t => t.assignees?.some(a => a.id == memberId))
   const myBugs = bugTasks.filter(t => t.assignees?.some(a => a.id == memberId))
-  const estimateTracked = summarizeEstimateTracked(myTasks)
+  const estimateTracked = summarizeEstimateTracked(myTasks, taskLookup)
   const totalEst = estimateTracked.allEstimatedMs
   const totalTracked = estimateTracked.allTrackedMs
 
@@ -240,7 +277,7 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
 
   const doneAt = t => parseInt(t.date_done || t.date_closed) || null
   const createdAt = t => parseInt(t.date_created) || null
-  const dueAt = t => parseInt(t.due_date) || null
+  const dueAt = t => getEffectiveDue(t, taskLookup).dueMs
   const now = Date.now()
 
   // Estimate accuracy: how close tracked time was to estimated time
@@ -279,10 +316,14 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
   const avgAgingTime = agingTimes.length ? agingTimes.reduce((a, b) => a + b, 0) / agingTimes.length : null
 
   const dueDatedDoneTasks = doneTasks.filter(t => dueAt(t) && doneAt(t))
-  const onTimeDoneTasks = dueDatedDoneTasks.filter(t => isTaskOnTime(t, doneAt(t), dueAt(t)))
+  const onTimeDoneTasks = dueDatedDoneTasks.filter(t => {
+    const due = getEffectiveDue(t, taskLookup)
+    return isTaskOnTime(t, doneAt(t), due.dueMs, due.dueDateTime)
+  })
   const onTimePct = dueDatedDoneTasks.length > 0 ? Math.round((onTimeDoneTasks.length / dueDatedDoneTasks.length) * 100) : null
 
-  const noEstimateTasks = myTasks.filter(t => !t.time_estimate || parseInt(t.time_estimate) === 0)
+  const myTaskIds = new Set(myTasks.map(t => t.id))
+  const noEstimateTasks = myTasks.filter(t => getEffectiveEstimate(t, taskLookup, myTaskIds) === 0)
   const estimateCoveragePct = myTasks.length > 0 ? Math.round(((myTasks.length - noEstimateTasks.length) / myTasks.length) * 100) : null
 
   const overdueOpenTasks = myTasks.filter(t => !isDone(t) && dueAt(t) && dueAt(t) < now)
@@ -492,7 +533,8 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
 }
 
 export function calcSprintStats(tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap = {}) {
-  const estimateTracked = summarizeEstimateTracked(tasks)
+  const taskLookup = buildTaskLookup(tasks, bugTasks)
+  const estimateTracked = summarizeEstimateTracked(tasks, taskLookup)
   const totalEst = estimateTracked.allEstimatedMs
   const totalTracked = estimateTracked.allTrackedMs
   const doneTasks = tasks.filter(isDone)
@@ -536,7 +578,7 @@ export function calcSprintStats(tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap
 
   const doneAt = t => parseInt(t.date_done || t.date_closed) || null
   const createdAt = t => parseInt(t.date_created) || null
-  const dueAt = t => parseInt(t.due_date) || null
+  const dueAt = t => getEffectiveDue(t, taskLookup).dueMs
   const now = Date.now()
 
   const leadTimes = doneTasks
@@ -557,7 +599,10 @@ export function calcSprintStats(tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap
   const avgAgingTime = avg(agingTimes)
 
   const dueDatedDoneTasks = doneTasks.filter(t => dueAt(t) && doneAt(t))
-  const onTimeDoneTasks = dueDatedDoneTasks.filter(t => isTaskOnTime(t, doneAt(t), dueAt(t)))
+  const onTimeDoneTasks = dueDatedDoneTasks.filter(t => {
+    const due = getEffectiveDue(t, taskLookup)
+    return isTaskOnTime(t, doneAt(t), due.dueMs, due.dueDateTime)
+  })
 
   const timelineCandidates = tasks.flatMap(t => [createdAt(t), doneAt(t)]).filter(Boolean)
   const minTimeline = timelineCandidates.length ? Math.min(...timelineCandidates) : null
@@ -601,7 +646,8 @@ export function calcSprintStats(tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap
     byPriority[p] = (byPriority[p] || 0) + 1
   })
 
-  const noEstimate = tasks.filter(t => !t.time_estimate || parseInt(t.time_estimate) === 0).length
+  const taskIds = new Set(tasks.map(t => t.id))
+  const noEstimate = tasks.filter(t => getEffectiveEstimate(t, taskLookup, taskIds) === 0).length
   const overdue = tasks.filter(t => !isDone(t) && t.due_date && parseInt(t.due_date) < now).length
 
   // Pipeline counts — how many tasks are waiting at each handoff stage
