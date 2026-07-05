@@ -308,12 +308,11 @@ function MemberCard({ member, index, tasks, bugTasks, onSelect, selected, cycleT
         </div>
       </div>
 
-      <KpiRow label="Completion rate" pct={kpi.sprintCompletionPct} score={kpi.completionScore} weight="16.7%" />
-      <KpiRow label="Estimate accuracy" pct={kpi.estimateAccuracyPct} score={kpi.estimateAccuracyScore} weight="16.7%" />
-      <KpiRow label="On-time delivery" pct={kpi.onTimePct} score={kpi.onTimeScore} weight="16.7%" />
-      <KpiRow label="Bug fix rate" pct={kpi.bugPct} score={kpi.bugScore} weight="16.7%" />
-      <KpiRow label="Throughput" score={kpi.throughputScore} weight="16.7%" displayValue={kpi.throughputPerWeek !== null ? `${kpi.throughputPerWeek}/wk` : null} barPct={kpi.throughputScore ? kpi.throughputScore * 20 : null} />
-      <KpiRow label="Code Quality Review Score" score={kpi.codeReviewScore} weight="16.7%" displayValue={kpi.codeReviewScore ? `${kpi.codeReviewScore}/5` : null} barPct={kpi.codeReviewScore ? kpi.codeReviewScore * 20 : null} />
+      <KpiRow label="Delivery rate" score={kpi.deliveryScore} weight="20%" barPct={kpi.deliveryScore ? kpi.deliveryScore * 20 : null} />
+      <KpiRow label="Estimate accuracy" pct={kpi.estimateAccuracyPct} score={kpi.estimateAccuracyScore} weight="20%" />
+      <KpiRow label="On-time delivery" pct={kpi.onTimePct} score={kpi.onTimeScore} weight="20%" />
+      <KpiRow label="Bug quality" score={kpi.bugScore} weight="20%" barPct={kpi.bugScore ? kpi.bugScore * 20 : null} />
+      <KpiRow label="Code Quality Review Score" score={kpi.codeReviewScore} weight="20%" displayValue={kpi.codeReviewScore ? `${kpi.codeReviewScore}/5` : null} barPct={kpi.codeReviewScore ? kpi.codeReviewScore * 20 : null} />
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
         <CompetencyBadge level={kpi.competencies.execution.level} />
@@ -344,11 +343,10 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
   const kpi = useMemo(() => calcMemberKPIs(member.id, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies, manualKpis), [member, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies, manualKpis])
 
   const radarData = [
-    { subject: 'Completion', value: kpi.completionScore || 0, fullMark: 5 },
+    { subject: 'Delivery', value: kpi.deliveryScore || 0, fullMark: 5 },
     { subject: 'Est. accuracy', value: kpi.estimateAccuracyScore || 0, fullMark: 5 },
     { subject: 'On-time', value: kpi.onTimeScore || 0, fullMark: 5 },
-    { subject: 'Bug fix', value: kpi.bugScore || 0, fullMark: 5 },
-    { subject: 'Throughput', value: kpi.throughputScore || 0, fullMark: 5 },
+    { subject: 'Bugs', value: kpi.bugScore || 0, fullMark: 5 },
     { subject: 'Review', value: kpi.codeReviewScore || 0, fullMark: 5 },
   ]
 

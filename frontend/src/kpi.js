@@ -266,6 +266,12 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
   const taskLookup = buildTaskLookup(tasks, bugTasks)
   const myTasks = tasks.filter(t => t.assignees?.some(a => a.id == memberId))
   const myBugs = bugTasks.filter(t => t.assignees?.some(a => a.id == memberId))
+  const myClassifiedBugs = myTasks.filter(t => classifyTaskType(t) === 'bug')
+  const myFeatures = myTasks.filter(t => classifyTaskType(t) === 'feature')
+  const combinedBugTaskMap = new Map()
+  myBugs.forEach(task => combinedBugTaskMap.set(task.id, task))
+  myClassifiedBugs.forEach(task => combinedBugTaskMap.set(task.id, task))
+  const combinedBugTasks = Array.from(combinedBugTaskMap.values())
   const estimateTracked = summarizeEstimateTracked(myTasks, taskLookup)
   const totalEst = estimateTracked.allEstimatedMs
   const totalTracked = estimateTracked.allTrackedMs
@@ -290,6 +296,16 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
   // Keep completionPct as alias for backward compat
   const completionPct = sprintCompletionPct
   const bugPct = myBugs.length > 0 ? Math.round((doneBugs.length / myBugs.length) * 100) : null
+  const storyBugBaseCount = myFeatures.length + myClassifiedBugs.length
+  const storyBugRatePct = storyBugBaseCount > 0 ? Math.round((myClassifiedBugs.length / storyBugBaseCount) * 100) : null
+  const bugCloseTimes = combinedBugTasks
+    .map(t => {
+      const created = createdAt(t)
+      const done = doneAt(t)
+      return created && done && done > created ? done - created : null
+    })
+    .filter(Boolean)
+  const avgBugCloseTime = bugCloseTimes.length ? bugCloseTimes.reduce((sum, value) => sum + value, 0) / bugCloseTimes.length : null
 
   // Member cycle times — assigned subtasks only
   const assignedDoneSubtasks = doneTasks.filter(t => t.parent)
@@ -338,28 +354,37 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
   const throughputPerWeek = windowDays ? Math.round((doneTasks.length / (windowDays / 7)) * 10) / 10 : null
 
   const estimateAccuracyScore = scoreScale(estimateAccuracyPct, [85, 70, 55, 40])
-  const bugScore = scoreScale(bugPct)
+  const bugFixScore = scoreScale(bugPct)
   const completionScore = scoreScale(completionPct)
   const onTimeScore = scoreScale(onTimePct, [85, 70, 55, 40])
   const throughputScore = scoreScale(throughputPerWeek, [4, 3, 2, 1])
+  const deliveryScoreParts = [completionScore, throughputScore].filter(v => v !== null && v !== undefined)
+  const deliveryScore = deliveryScoreParts.length
+    ? Math.round((deliveryScoreParts.reduce((sum, value) => sum + value, 0) / deliveryScoreParts.length) * 10) / 10
+    : null
+  const storyBugScore = scoreInverseScale(storyBugRatePct, [5, 10, 20, 30])
+  const avgBugCloseDays = avgBugCloseTime ? msToDays(avgBugCloseTime) : null
+  const bugCloseTimeScore = scoreInverseScale(avgBugCloseDays, [2, 4, 7, 10])
+  const bugScoreParts = [bugFixScore, storyBugScore, bugCloseTimeScore].filter(v => v !== null && v !== undefined)
+  const bugScore = bugScoreParts.length
+    ? Math.round((bugScoreParts.reduce((sum, value) => sum + value, 0) / bugScoreParts.length) * 10) / 10
+    : null
   const codeReviewScoreRaw = parseFloat(manualKpis?.codeQualityReviewScore)
   const codeReviewScore = codeReviewScoreRaw >= 1 && codeReviewScoreRaw <= 5 ? codeReviewScoreRaw : 3
 
   const weights = {
-    estimateAccuracy: 1 / 6,
-    completion: 1 / 6,
-    bug: 1 / 6,
-    onTime: 1 / 6,
-    throughput: 1 / 6,
-    codeReview: 1 / 6,
+    delivery: 1 / 5,
+    estimateAccuracy: 1 / 5,
+    bug: 1 / 5,
+    onTime: 1 / 5,
+    codeReview: 1 / 5,
   }
   let kpiWeightedScore = null
   const parts = []
+  if (deliveryScore !== null) parts.push({ s: deliveryScore, w: weights.delivery })
   if (estimateAccuracyScore !== null) parts.push({ s: estimateAccuracyScore, w: weights.estimateAccuracy })
   if (bugScore !== null) parts.push({ s: bugScore, w: weights.bug })
-  if (completionScore !== null) parts.push({ s: completionScore, w: weights.completion })
   if (onTimeScore !== null) parts.push({ s: onTimeScore, w: weights.onTime })
-  if (throughputScore !== null) parts.push({ s: throughputScore, w: weights.throughput })
   if (codeReviewScore !== null) parts.push({ s: codeReviewScore, w: weights.codeReview })
   if (parts.length) {
     const totalW = parts.reduce((a, p) => a + p.w, 0)
@@ -456,9 +481,10 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
     },
     quality: {
       level: levelFromPct(qualityStrengthPct ?? qualityPct, 90, 75, 60),
-      summary: `Bug fix ${bugPct ?? '—'}%, reopen ${reopenRatePct ?? '—'}%, testing bounce-back ${testingBounceBackPct ?? '—'}%.`,
+      summary: `Bug fix ${bugPct ?? '—'}%, avg close ${avgBugCloseDays ?? '—'}d, reopen ${reopenRatePct ?? '—'}%.`,
       evidence: [
         { label: 'Bug fix rate', value: bugPct !== null ? `${bugPct}%` : '—' },
+        { label: 'Bug close time', value: avgBugCloseDays !== null ? `${avgBugCloseDays}d` : '—' },
         { label: 'Reopen rate', value: reopenRatePct !== null ? `${reopenRatePct}%` : '—' },
         { label: 'Testing bounce-back', value: testingBounceBackPct !== null ? `${testingBounceBackPct}%` : '—' },
         { label: 'Overdue open', value: overdueOpenTasks.length },
@@ -498,6 +524,8 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
     sprintCompletionPct,
     completionPct,
     bugPct,
+    storyBugRatePct,
+    avgBugCloseDays,
     onTimePct,
     dueDatedDoneTasks: dueDatedDoneTasks.length,
     onTimeDoneTasks: onTimeDoneTasks.length,
@@ -510,13 +538,18 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
     byWorkType,
     byWorkTypeByList,
     workTypeData,
-    classifiedBugCount: byWorkType.bug || 0,
+    classifiedBugCount: myClassifiedBugs.length,
     bugListAssignedCount: myBugs.length,
     estimateAccuracyScore,
+    bugFixScore,
+    bugCloseTimeScore,
     bugScore,
     completionScore,
+    deliveryScore,
     onTimeScore,
     throughputScore,
+    storyBugScore,
+    storyBugScore,
     codeReviewScore,
     kpiWeightedScore: kpiWeightedScore !== null ? kpiWeightedScore.toFixed(1) : null,
     competencyScore: competencyScore !== null ? competencyScore.toFixed(1) : null,
