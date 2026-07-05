@@ -5,6 +5,7 @@ import { calcMemberKPIs, classifyTaskType, getWorkTypeHelp } from './kpi.js'
 
 const ACCENT = '#4f7cff'
 const COMPETENCY_STORAGE_KEY = 'kpi_manual_competencies_v1'
+const MANUAL_KPI_STORAGE_KEY = 'kpi_manual_scores_v1'
 const LEVEL_COLORS = {
   Strong: { color: '#3ecf8e', bg: '#0d2b1a' },
   Solid: { color: '#4f7cff', bg: '#0d1f3a' },
@@ -148,6 +149,18 @@ function saveManualCompetencies(map) {
   localStorage.setItem(COMPETENCY_STORAGE_KEY, JSON.stringify(map))
 }
 
+function loadManualKpiScores() {
+  try {
+    return JSON.parse(localStorage.getItem(MANUAL_KPI_STORAGE_KEY) || '{}') || {}
+  } catch {
+    return {}
+  }
+}
+
+function saveManualKpiScores(map) {
+  localStorage.setItem(MANUAL_KPI_STORAGE_KEY, JSON.stringify(map))
+}
+
 function ManualCompetencyEditor({ member, values = {}, onChange, onClear, summaryScore, manualScore, disciplineScore }) {
   const sel = { background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', fontSize: 12, padding: '6px 10px', fontFamily: 'var(--font)', cursor: 'pointer' }
   const [categoryFilter, setCategoryFilter] = useState('All')
@@ -266,8 +279,8 @@ function ManualCompetencyEditor({ member, values = {}, onChange, onClear, summar
   )
 }
 
-function MemberCard({ member, index, tasks, bugTasks, onSelect, selected, cycleTimeMap = {}, cycleMetaMap = {}, manualCompetencies = {} }) {
-  const kpi = useMemo(() => calcMemberKPIs(member.id, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies), [member, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies])
+function MemberCard({ member, index, tasks, bugTasks, onSelect, selected, cycleTimeMap = {}, cycleMetaMap = {}, manualCompetencies = {}, manualKpis = {} }) {
+  const kpi = useMemo(() => calcMemberKPIs(member.id, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies, manualKpis), [member, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies, manualKpis])
 
   return (
     <div
@@ -295,10 +308,12 @@ function MemberCard({ member, index, tasks, bugTasks, onSelect, selected, cycleT
         </div>
       </div>
 
-      <KpiRow label="Completion rate" pct={kpi.sprintCompletionPct} score={kpi.completionScore} weight="25%" />
-      <KpiRow label="Estimate accuracy" pct={kpi.estimateAccuracyPct} score={kpi.estimateAccuracyScore} weight="25%" />
-      <KpiRow label="On-time delivery" pct={kpi.onTimePct} score={kpi.onTimeScore} weight="25%" />
-      <KpiRow label="Bug fix rate" pct={kpi.bugPct} score={kpi.bugScore} weight="25%" />
+      <KpiRow label="Completion rate" pct={kpi.sprintCompletionPct} score={kpi.completionScore} weight="16.7%" />
+      <KpiRow label="Estimate accuracy" pct={kpi.estimateAccuracyPct} score={kpi.estimateAccuracyScore} weight="16.7%" />
+      <KpiRow label="On-time delivery" pct={kpi.onTimePct} score={kpi.onTimeScore} weight="16.7%" />
+      <KpiRow label="Bug fix rate" pct={kpi.bugPct} score={kpi.bugScore} weight="16.7%" />
+      <KpiRow label="Throughput" score={kpi.throughputScore} weight="16.7%" displayValue={kpi.throughputPerWeek !== null ? `${kpi.throughputPerWeek}/wk` : null} barPct={kpi.throughputScore ? kpi.throughputScore * 20 : null} />
+      <KpiRow label="Code Quality Review Score" score={kpi.codeReviewScore} weight="16.7%" displayValue={kpi.codeReviewScore ? `${kpi.codeReviewScore}/5` : null} barPct={kpi.codeReviewScore ? kpi.codeReviewScore * 20 : null} />
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
         <CompetencyBadge level={kpi.competencies.execution.level} />
@@ -324,15 +339,17 @@ function MemberCard({ member, index, tasks, bugTasks, onSelect, selected, cycleT
   )
 }
 
-function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap = {}, manualCompetencies = {}, onCompetencyChange, onClearCompetencies, onClose }) {
+function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap = {}, manualCompetencies = {}, manualKpis = {}, onCompetencyChange, onClearCompetencies, onManualKpiChange, onClose }) {
   const [taskListState, setTaskListState] = useState(null)
-  const kpi = useMemo(() => calcMemberKPIs(member.id, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies), [member, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies])
+  const kpi = useMemo(() => calcMemberKPIs(member.id, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies, manualKpis), [member, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies, manualKpis])
 
   const radarData = [
     { subject: 'Completion', value: kpi.completionScore || 0, fullMark: 5 },
     { subject: 'Est. accuracy', value: kpi.estimateAccuracyScore || 0, fullMark: 5 },
     { subject: 'On-time', value: kpi.onTimeScore || 0, fullMark: 5 },
     { subject: 'Bug fix', value: kpi.bugScore || 0, fullMark: 5 },
+    { subject: 'Throughput', value: kpi.throughputScore || 0, fullMark: 5 },
+    { subject: 'Review', value: kpi.codeReviewScore || 0, fullMark: 5 },
   ]
 
   const myTasks = tasks.filter(t => t.assignees?.some(a => a.id == member.id))
@@ -393,6 +410,18 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
         <div>
           <SectionTitle>KPI scores</SectionTitle>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 12, color: 'var(--text2)' }}>
+              <HelpLabel label="Code Quality Review Score" />:
+            </div>
+            <select
+              value={manualKpis.codeQualityReviewScore ?? 3}
+              onChange={e => onManualKpiChange(member.id, 'codeQualityReviewScore', e.target.value)}
+              style={{ background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', fontSize: 12, padding: '6px 10px', fontFamily: 'var(--font)', cursor: 'pointer' }}
+            >
+              {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}/5</option>)}
+            </select>
+          </div>
           <div style={{ height: 180 }}>
             <ResponsiveContainer width="100%" height="100%">
               <RadarChart data={radarData}>
@@ -509,6 +538,7 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
 export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycleTimeMap = {}, cycleMetaMap = {} }) {
   const [selectedMember, setSelectedMember] = React.useState(null)
   const [manualCompetencyMap, setManualCompetencyMap] = React.useState(loadManualCompetencies)
+  const [manualKpiMap, setManualKpiMap] = React.useState(loadManualKpiScores)
 
   function updateCompetency(memberId, competencyKey, value) {
     setManualCompetencyMap(prev => {
@@ -529,6 +559,21 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
       const next = { ...prev }
       delete next[memberId]
       saveManualCompetencies(next)
+      return next
+    })
+  }
+
+  function updateManualKpi(memberId, key, value) {
+    setManualKpiMap(prev => {
+      const current = prev[memberId] || {}
+      const next = {
+        ...prev,
+        [memberId]: {
+          ...current,
+          [key]: value ? Number(value) : 3,
+        },
+      }
+      saveManualKpiScores(next)
       return next
     })
   }
@@ -577,8 +622,10 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
           cycleTimeMap={cycleTimeMap}
           cycleMetaMap={cycleMetaMap}
           manualCompetencies={manualCompetencyMap[selectedMember.id] || {}}
+          manualKpis={manualKpiMap[selectedMember.id] || {}}
           onCompetencyChange={updateCompetency}
           onClearCompetencies={clearMemberCompetencies}
+          onManualKpiChange={updateManualKpi}
           onClose={() => setSelectedMember(null)}
         />
       )}
@@ -595,6 +642,7 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
             cycleTimeMap={cycleTimeMap}
             cycleMetaMap={cycleMetaMap}
             manualCompetencies={manualCompetencyMap[m.id] || {}}
+            manualKpis={manualKpiMap[m.id] || {}}
           />
         ))}
       </div>

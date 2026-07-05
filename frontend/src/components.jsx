@@ -18,7 +18,7 @@ const s = {
 
 const HELP_TEXT = {
   Completion: 'Percentage of tasks in the selected scope that reached a done status.',
-  Throughput: 'Average number of completed tasks per week within the selected period.',
+  Throughput: 'Average number of completed tasks per week within the selected period. For KPI scoring, this uses: 4+/wk=5, 3+/wk=4, 2+/wk=3, 1+/wk=2, below 1/wk=1.',
   'Lead time': 'Average time from task creation to task completion.',
   'Aging WIP': 'Average age of tasks that are still active and not yet done.',
   Estimated: 'Total estimated effort recorded on tasks in the selected scope.',
@@ -33,6 +33,7 @@ const HELP_TEXT = {
   'Code coverage': 'Service-level test coverage. This is not available from ClickUp tasks alone and needs CI or test-report integration.',
   'API SLA compliance': 'Response-time or availability compliance against an API SLA. This needs monitoring or APM data, not only task data.',
   'Review quality score': 'Quality signal from code reviews, such as rework, review outcomes, or static analysis. This needs PR or code-quality tooling.',
+  'Code Quality Review Score': 'Manual 1-5 KPI entered per person.',
   Canceled: 'Tasks marked canceled, cancelled, rejected, or otherwise excluded from delivery.',
   Overdue: 'Open tasks whose due date has already passed.',
   'No estimate': 'Tasks with no estimate or zero estimate recorded.',
@@ -79,8 +80,8 @@ const HELP_TEXT = {
   'Main work type': 'The most common inferred work type for this member in the selected period.',
   'Overdue open': 'Open tasks assigned to the member whose due date has passed.',
   'Bug volume': 'Count of tasks classified as bugs for the selected scope or member.',
-  'Weighted score': 'Final 1-5 score. KPI score contributes 70% and manual competency score contributes 30%. The KPI score itself is an equal-weight average of completion rate, estimate accuracy, on-time delivery, and bug fix rate, re-normalized when some KPI signals are missing.',
-  'KPI score': 'The task-based 1-5 score only, before blending with manual competencies. It averages completion rate, estimate accuracy, on-time delivery, and bug fix rate equally.',
+  'Weighted score': 'Final 1-5 score. KPI score contributes 70% and manual competency score contributes 30%. The KPI score itself is an equal-weight average of completion rate, estimate accuracy, on-time delivery, bug fix rate, throughput, and the manual Code Quality Review Score.',
+  'KPI score': 'The task-based 1-5 score only, before blending with manual competencies. It averages completion rate, estimate accuracy, on-time delivery, bug fix rate, throughput, and the manual Code Quality Review Score equally.',
   'Competency score': 'Combined manual competency score on a 1-5 scale. Non-discipline competencies share 25/30 of this score, while Discipline contributes 5/30. If only one side is filled, the score re-normalizes to the available inputs.',
   'Manual competency block': 'Average of the non-discipline manual competencies on a 1-5 scale. This block represents 25/30 of the competency portion.',
   'Discipline score': 'Manual discipline level on a 1-5 scale. This represents 5/30 of the competency portion.',
@@ -183,15 +184,26 @@ export function ProgressBar({ pct, height = 4 }) {
   )
 }
 
-export function KpiRow({ label, pct, score, weight }) {
-  if (pct === null || pct === undefined) return null
-  const color = pct >= 90 ? '#3ecf8e' : pct >= 75 ? '#4f7cff' : pct >= 60 ? '#f5a623' : '#f0524f'
+function scoreColor(score) {
+  const value = parseFloat(score)
+  if (Number.isNaN(value)) return 'var(--text2)'
+  if (value >= 5) return '#3ecf8e'
+  if (value >= 4) return '#4f7cff'
+  if (value >= 3) return '#f5a623'
+  return '#f0524f'
+}
+
+export function KpiRow({ label, pct, score, weight, displayValue, barPct }) {
+  if ((pct === null || pct === undefined) && (displayValue === null || displayValue === undefined)) return null
+  const resolvedBarPct = barPct ?? pct
+  const valueText = displayValue ?? `${pct}%`
+  const color = score !== null && score !== undefined ? scoreColor(score) : (pct >= 90 ? '#3ecf8e' : pct >= 75 ? '#4f7cff' : pct >= 60 ? '#f5a623' : '#f0524f')
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '0.5px solid var(--border)' }}>
       <span style={{ fontSize: 12, color: 'var(--text2)', flex: 1 }}><HelpLabel label={label} /></span>
       {weight && <span style={{ fontSize: 10, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{weight}</span>}
-      <div style={{ width: 70 }}><ProgressBar pct={pct} /></div>
-      <span style={{ fontSize: 12, fontWeight: 500, color, fontFamily: 'var(--mono)', minWidth: 36, textAlign: 'right' }}>{pct}%</span>
+      <div style={{ width: 70 }}>{resolvedBarPct !== null && resolvedBarPct !== undefined ? <ProgressBar pct={resolvedBarPct} /> : null}</div>
+      <span style={{ fontSize: 12, fontWeight: 500, color, fontFamily: 'var(--mono)', minWidth: 48, textAlign: 'right' }}>{valueText}</span>
       <ScoreBadge score={score} />
     </div>
   )

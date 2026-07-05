@@ -8,6 +8,15 @@ export function scoreScale(pct, thresholds = [90, 75, 60, 45]) {
   return 1
 }
 
+export function scoreInverseScale(value, thresholds = [4, 7, 10, 14]) {
+  if (value === null || value === undefined) return null
+  if (value <= thresholds[0]) return 5
+  if (value <= thresholds[1]) return 4
+  if (value <= thresholds[2]) return 3
+  if (value <= thresholds[3]) return 2
+  return 1
+}
+
 export function msToHours(ms) {
   return Math.round((ms || 0) / 3600000 * 10) / 10
 }
@@ -217,7 +226,7 @@ function summarizeEstimateTracked(tasks) {
   }
 }
 
-export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap = {}, manualCompetencies = {}) {
+export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap = {}, manualCompetencies = {}, manualKpis = {}) {
   const myTasks = tasks.filter(t => t.assignees?.some(a => a.id == memberId))
   const myBugs = bugTasks.filter(t => t.assignees?.some(a => a.id == memberId))
   const estimateTracked = summarizeEstimateTracked(myTasks)
@@ -291,14 +300,26 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
   const bugScore = scoreScale(bugPct)
   const completionScore = scoreScale(completionPct)
   const onTimeScore = scoreScale(onTimePct, [85, 70, 55, 40])
+  const throughputScore = scoreScale(throughputPerWeek, [4, 3, 2, 1])
+  const codeReviewScoreRaw = parseFloat(manualKpis?.codeQualityReviewScore)
+  const codeReviewScore = codeReviewScoreRaw >= 1 && codeReviewScoreRaw <= 5 ? codeReviewScoreRaw : 3
 
-  const weights = { estimateAccuracy: 0.25, completion: 0.25, bug: 0.25, onTime: 0.25 }
+  const weights = {
+    estimateAccuracy: 1 / 6,
+    completion: 1 / 6,
+    bug: 1 / 6,
+    onTime: 1 / 6,
+    throughput: 1 / 6,
+    codeReview: 1 / 6,
+  }
   let kpiWeightedScore = null
   const parts = []
   if (estimateAccuracyScore !== null) parts.push({ s: estimateAccuracyScore, w: weights.estimateAccuracy })
   if (bugScore !== null) parts.push({ s: bugScore, w: weights.bug })
   if (completionScore !== null) parts.push({ s: completionScore, w: weights.completion })
   if (onTimeScore !== null) parts.push({ s: onTimeScore, w: weights.onTime })
+  if (throughputScore !== null) parts.push({ s: throughputScore, w: weights.throughput })
+  if (codeReviewScore !== null) parts.push({ s: codeReviewScore, w: weights.codeReview })
   if (parts.length) {
     const totalW = parts.reduce((a, p) => a + p.w, 0)
     kpiWeightedScore = Math.round((parts.reduce((a, p) => a + p.s * p.w, 0) / totalW) * 10) / 10
@@ -454,6 +475,8 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
     bugScore,
     completionScore,
     onTimeScore,
+    throughputScore,
+    codeReviewScore,
     kpiWeightedScore: kpiWeightedScore !== null ? kpiWeightedScore.toFixed(1) : null,
     competencyScore: competencyScore !== null ? competencyScore.toFixed(1) : null,
     manualCompetencyScore: manualCompetencyScore !== null ? manualCompetencyScore.toFixed(1) : null,
