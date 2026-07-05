@@ -1,5 +1,4 @@
 // Score on 1-5 scale given percentage and thresholds [5,4,3,2]
-// Default band is intentionally softer so medium process hygiene does not collapse to 1/5.
 export function scoreScale(pct, thresholds = [90, 75, 60, 45]) {
   if (pct === null || pct === undefined) return null
   if (pct >= thresholds[0]) return 5
@@ -288,10 +287,10 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
     : null
   const throughputPerWeek = windowDays ? Math.round((doneTasks.length / (windowDays / 7)) * 10) / 10 : null
 
-  const estimateAccuracyScore = scoreScale(estimateAccuracyPct)
+  const estimateAccuracyScore = scoreScale(estimateAccuracyPct, [85, 70, 55, 40])
   const bugScore = scoreScale(bugPct)
   const completionScore = scoreScale(completionPct)
-  const onTimeScore = scoreScale(onTimePct)
+  const onTimeScore = scoreScale(onTimePct, [85, 70, 55, 40])
 
   const weights = { estimateAccuracy: 0.25, completion: 0.25, bug: 0.25, onTime: 0.25 }
   let kpiWeightedScore = null
