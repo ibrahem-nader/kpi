@@ -148,7 +148,7 @@ function saveManualCompetencies(map) {
   localStorage.setItem(COMPETENCY_STORAGE_KEY, JSON.stringify(map))
 }
 
-function ManualCompetencyEditor({ member, values = {}, onChange, summaryScore, manualScore, disciplineScore }) {
+function ManualCompetencyEditor({ member, values = {}, onChange, onClear, summaryScore, manualScore, disciplineScore }) {
   const sel = { background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', fontSize: 12, padding: '6px 10px', fontFamily: 'var(--font)', cursor: 'pointer' }
   const [categoryFilter, setCategoryFilter] = useState('All')
   const [expandedKeys, setExpandedKeys] = useState(() => Object.fromEntries(MANUAL_COMPETENCIES.map(item => [item.key, false])))
@@ -179,6 +179,18 @@ function ManualCompetencyEditor({ member, values = {}, onChange, summaryScore, m
                 {option}
               </button>
             ))}
+            <button
+              onClick={() => onClear(member.id)}
+              style={{
+                ...sel,
+                fontSize: 11,
+                background: '#2b0f0f',
+                color: '#f0524f',
+                border: '0.5px solid #f0524f44',
+              }}
+            >
+              Clear person
+            </button>
           </div>
           <div style={{ fontSize: 12, color: 'var(--text2)' }}>
             <HelpLabel label="Competency score" />: <span style={{ color: 'var(--text)', fontFamily: 'var(--mono)' }}>{summaryScore || '—'}/5</span>
@@ -312,7 +324,7 @@ function MemberCard({ member, index, tasks, bugTasks, onSelect, selected, cycleT
   )
 }
 
-function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap = {}, manualCompetencies = {}, onCompetencyChange, onClose }) {
+function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap = {}, manualCompetencies = {}, onCompetencyChange, onClearCompetencies, onClose }) {
   const [taskListState, setTaskListState] = useState(null)
   const kpi = useMemo(() => calcMemberKPIs(member.id, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies), [member, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies])
 
@@ -450,6 +462,7 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
           member={member}
           values={manualCompetencies}
           onChange={onCompetencyChange}
+          onClear={onClearCompetencies}
           summaryScore={kpi.competencyScore}
           manualScore={kpi.manualCompetencyScore}
           disciplineScore={kpi.disciplineScore}
@@ -511,6 +524,15 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
     })
   }
 
+  function clearMemberCompetencies(memberId) {
+    setManualCompetencyMap(prev => {
+      const next = { ...prev }
+      delete next[memberId]
+      saveManualCompetencies(next)
+      return next
+    })
+  }
+
   const filtered = members
     .filter(m => assigneeFilter === 'all' || m.id == assigneeFilter)
 
@@ -556,6 +578,7 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
           cycleMetaMap={cycleMetaMap}
           manualCompetencies={manualCompetencyMap[selectedMember.id] || {}}
           onCompetencyChange={updateCompetency}
+          onClearCompetencies={clearMemberCompetencies}
           onClose={() => setSelectedMember(null)}
         />
       )}
