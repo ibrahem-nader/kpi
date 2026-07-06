@@ -20,7 +20,7 @@ const HELP_TEXT = {
   Completion: 'Percentage of tasks in the selected scope that reached a done status.',
   'Delivery rate': 'Combined delivery KPI based on completion rate and throughput together.',
   Throughput: 'Average number of completed tasks per week within the selected period.',
-  'Bug quality': 'Combined bug KPI based on Bugs-list fix rate, story bugs introduced in main work, and average time to close completed bugs.',
+  'Bug quality': 'Combined bug KPI based on Bugs-list fix rate, completed bug volume, story bugs introduced in main work, and average time to close completed bugs.',
   'Bug close time': 'Average time from bug creation to bug completion across completed bug tasks.',
   'Lead time': 'Average time from task creation to task completion.',
   'Aging WIP': 'Average age of tasks that are still active and not yet done.',
@@ -348,6 +348,11 @@ export function TaskListModal({ open, title, subtitle, tasks = [], onClose }) {
                   <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 3 }}>
                     {task.list?.name || 'Unknown list'} · {task.status?.status || 'Unknown status'} · {task.id}
                   </div>
+                  {task.metaLine ? (
+                    <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 4, fontFamily: 'var(--mono)' }}>
+                      {task.metaLine}
+                    </div>
+                  ) : null}
                 </div>
                 <div style={{ flexShrink: 0, fontSize: 11, color: 'var(--accent)' }}>
                   {formatTaskDate(task) || 'Open'}

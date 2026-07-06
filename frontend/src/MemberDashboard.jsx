@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts'
 import { Card, SectionTitle, KpiRow, ScoreBadge, Avatar, StatRow, HelpLabel, TaskListModal } from './components.jsx'
-import { calcMemberKPIs, classifyTaskType, getWorkTypeHelp } from './kpi.js'
+import { buildEstimateAccuracyBreakdown, calcMemberKPIs, classifyTaskType, getWorkTypeHelp } from './kpi.js'
 
 const ACCENT = '#4f7cff'
 const COMPETENCY_STORAGE_KEY = 'kpi_manual_competencies_v1'
@@ -280,9 +280,12 @@ function ManualCompetencyEditor({ member, values = {}, onChange, onClear, summar
 }
 
 function MemberCard({ member, index, tasks, bugTasks, onSelect, selected, cycleTimeMap = {}, cycleMetaMap = {}, manualCompetencies = {}, manualKpis = {} }) {
+  const [taskListState, setTaskListState] = useState(null)
   const kpi = useMemo(() => calcMemberKPIs(member.id, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies, manualKpis), [member, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies, manualKpis])
+  const estimateBreakdownTasks = useMemo(() => buildEstimateAccuracyBreakdown(member.id, tasks, bugTasks), [member.id, tasks, bugTasks])
 
   return (
+    <>
     <div
       onClick={() => onSelect(selected ? null : member)}
       style={{
@@ -325,6 +328,31 @@ function MemberCard({ member, index, tasks, bugTasks, onSelect, selected, cycleT
         <HelpLabel label="KPI score" /> {kpi.kpiWeightedScore || '—'}/5 · <HelpLabel label="Competency score" /> {kpi.competencyScore || '—'}/5
       </div>
 
+      {/* <div style={{ marginTop: 10 }}>
+        <button
+          onClick={e => {
+            e.stopPropagation()
+            setTaskListState({
+              title: `${member.username || member.email} · Estimate breakers`,
+              subtitle: `${estimateBreakdownTasks.length} tasks lowering estimate accuracy · ${kpi.estimateAccuracyPct !== null ? `${kpi.estimateAccuracyPct}%` : '—'} overall`,
+              tasks: estimateBreakdownTasks,
+            })
+          }}
+          style={{
+            background: 'var(--bg3)',
+            border: '0.5px solid var(--border2)',
+            borderRadius: 'var(--radius-sm)',
+            color: 'var(--text2)',
+            fontSize: 11,
+            padding: '6px 10px',
+            fontFamily: 'var(--font)',
+            cursor: 'pointer',
+          }}
+        >
+          Estimate breakers
+        </button>
+      </div> */}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginTop: 12, paddingTop: 10, borderTop: '0.5px solid var(--border)' }}>
         <span style={{ fontSize: 11, color: 'var(--text3)' }}>{kpi.estimatedHours}h est · {kpi.trackedHours}h tracked</span>
         <span style={{ fontSize: 11, color: 'var(--text3)' }}>
@@ -335,6 +363,14 @@ function MemberCard({ member, index, tasks, bugTasks, onSelect, selected, cycleT
         parent {kpi.parentEstimatedHours}h/{kpi.parentTrackedHours}h · subtasks {kpi.subtaskEstimatedHours}h/{kpi.subtaskTrackedHours}h
       </div>
     </div>
+    <TaskListModal
+      open={!!taskListState}
+      title={taskListState?.title}
+      subtitle={taskListState?.subtitle}
+      tasks={taskListState?.tasks || []}
+      onClose={() => setTaskListState(null)}
+    />
+    </>
   )
 }
 

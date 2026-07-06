@@ -262,6 +262,44 @@ function summarizeEstimateTracked(tasks, taskLookup = {}) {
   }
 }
 
+export function buildEstimateAccuracyBreakdown(memberId, tasks, bugTasks = []) {
+  const taskLookup = buildTaskLookup(tasks, bugTasks)
+  const myTasks = tasks.filter(t => t.assignees?.some(a => a.id == memberId))
+  const taskIdsInScope = new Set(myTasks.map(t => t.id))
+
+  return myTasks.map(task => {
+    const ownEstimateMs = parseInt(task?.time_estimate) || 0
+    const trackedMs = task.time_spent || 0
+    const parentId = getParentId(task)
+    const parentEstimateMs = parentId ? (parseInt(taskLookup[parentId]?.time_estimate) || 0) : 0
+    const usesParentEstimate = ownEstimateMs === 0 && parentId && !taskIdsInScope.has(parentId) && parentEstimateMs > 0
+    const effectiveEstimateMs = getEffectiveEstimate(task, taskLookup, taskIdsInScope)
+    const effectiveEstimateHours = msToHours(effectiveEstimateMs)
+    const trackedHours = msToHours(trackedMs)
+    const accuracyPct = effectiveEstimateMs > 0 ? Math.round((trackedMs / effectiveEstimateMs) * 100) : null
+    const estimateSource = ownEstimateMs > 0 ? 'task estimate' : (usesParentEstimate ? 'parent estimate fallback' : 'no estimate')
+    const estimateGapMs = effectiveEstimateMs - trackedMs
+    const isBreakingEstimateScore = effectiveEstimateMs > 0 && trackedMs < effectiveEstimateMs
+    const metaLine = `${effectiveEstimateHours}h est · ${trackedHours}h tracked${accuracyPct !== null ? ` · ${accuracyPct}%` : ''} · ${estimateSource}`
+
+    return {
+      ...task,
+      effectiveEstimateMs,
+      effectiveEstimateHours,
+      trackedMs,
+      trackedHours,
+      accuracyPct,
+      estimateSource,
+      estimateGapMs,
+      estimateGapHours: msToHours(Math.abs(estimateGapMs)),
+      isBreakingEstimateScore,
+      metaLine,
+    }
+  })
+    .filter(task => task.isBreakingEstimateScore)
+    .sort((a, b) => b.estimateGapMs - a.estimateGapMs)
+}
+
 export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap = {}, manualCompetencies = {}, manualKpis = {}) {
   const taskLookup = buildTaskLookup(tasks, bugTasks)
   const myTasks = tasks.filter(t => t.assignees?.some(a => a.id == memberId))
@@ -280,6 +318,7 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
   const activeTasks = myTasks.filter(t => isActive(t))
   const blockedTasks = myTasks.filter(t => isBlocked(t))
   const doneBugs = myBugs.filter(t => isDone(t))
+  const doneCombinedBugTasks = combinedBugTasks.filter(t => isDone(t))
 
   const doneAt = t => parseInt(t.date_done || t.date_closed) || null
   const createdAt = t => parseInt(t.date_created) || null
@@ -365,7 +404,8 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
   const storyBugScore = scoreInverseScale(storyBugRatePct, [5, 10, 20, 30])
   const avgBugCloseDays = avgBugCloseTime ? msToDays(avgBugCloseTime) : null
   const bugCloseTimeScore = scoreInverseScale(avgBugCloseDays, [2, 4, 7, 10])
-  const bugScoreParts = [bugFixScore, storyBugScore, bugCloseTimeScore].filter(v => v !== null && v !== undefined)
+  const bugVolumeScore = scoreScale(doneCombinedBugTasks.length, [12, 8, 4, 1])
+  const bugScoreParts = [bugFixScore, bugVolumeScore, storyBugScore, bugCloseTimeScore].filter(v => v !== null && v !== undefined)
   const bugScore = bugScoreParts.length
     ? Math.round((bugScoreParts.reduce((sum, value) => sum + value, 0) / bugScoreParts.length) * 10) / 10
     : null
@@ -481,9 +521,10 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
     },
     quality: {
       level: levelFromPct(qualityStrengthPct ?? qualityPct, 90, 75, 60),
-      summary: `Bug fix ${bugPct ?? '—'}%, avg close ${avgBugCloseDays ?? '—'}d, reopen ${reopenRatePct ?? '—'}%.`,
+      summary: `Bug fix ${bugPct ?? '—'}%, ${doneCombinedBugTasks.length} bugs closed, avg close ${avgBugCloseDays ?? '—'}d.`,
       evidence: [
         { label: 'Bug fix rate', value: bugPct !== null ? `${bugPct}%` : '—' },
+        { label: 'Bug volume', value: doneCombinedBugTasks.length },
         { label: 'Bug close time', value: avgBugCloseDays !== null ? `${avgBugCloseDays}d` : '—' },
         { label: 'Reopen rate', value: reopenRatePct !== null ? `${reopenRatePct}%` : '—' },
         { label: 'Testing bounce-back', value: testingBounceBackPct !== null ? `${testingBounceBackPct}%` : '—' },
@@ -511,6 +552,7 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
     blockedTasks: blockedTasks.length,
     totalBugs: myBugs.length,
     doneBugs: doneBugs.length,
+    doneCombinedBugTasks: doneCombinedBugTasks.length,
     estimatedHours: msToHours(totalEst),
     trackedHours: msToHours(totalTracked),
     parentEstimatedHours: msToHours(estimateTracked.parentEstimatedMs),
@@ -542,6 +584,7 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
     bugListAssignedCount: myBugs.length,
     estimateAccuracyScore,
     bugFixScore,
+    bugVolumeScore,
     bugCloseTimeScore,
     bugScore,
     completionScore,
