@@ -434,7 +434,15 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
   const disciplineValue = parseFloat(manualCompetencies?.discipline)
   const disciplineScore = disciplineValue >= 1 && disciplineValue <= 5 ? disciplineValue : null
   const manualCompetencyLevels = Object.entries(manualCompetencies || {})
-    .filter(([key]) => key !== 'discipline')
+    .filter(([key]) =>
+      key !== 'discipline' &&
+      key !== 'person_comments' &&
+      key !== 'person_cases' &&
+      key !== 'person_notes' &&
+      !key.endsWith('_comments') &&
+      !key.endsWith('_cases') &&
+      !key.endsWith('_notes')
+    )
     .map(([, value]) => parseFloat(value))
     .filter(value => value >= 1 && value <= 5)
   const manualCompetencyScore = manualCompetencyLevels.length

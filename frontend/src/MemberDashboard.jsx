@@ -161,8 +161,29 @@ function saveManualKpiScores(map) {
   localStorage.setItem(MANUAL_KPI_STORAGE_KEY, JSON.stringify(map))
 }
 
-function ManualCompetencyEditor({ member, values = {}, onChange, onClear, summaryScore, manualScore, disciplineScore }) {
+function mergeLegacyNotes(...parts) {
+  return parts
+    .map(part => String(part || '').trim())
+    .filter(Boolean)
+    .filter((part, index, arr) => arr.indexOf(part) === index)
+    .join('\n\n')
+}
+
+function ManualCompetencyEditor({ member, values = {}, onLevelChange, onTextChange, onClear, summaryScore, manualScore, disciplineScore }) {
   const sel = { background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', fontSize: 12, padding: '6px 10px', fontFamily: 'var(--font)', cursor: 'pointer' }
+  const textArea = {
+    width: '100%',
+    minHeight: 76,
+    resize: 'vertical',
+    background: 'var(--bg2)',
+    border: '0.5px solid var(--border2)',
+    borderRadius: 'var(--radius-sm)',
+    color: 'var(--text)',
+    fontSize: 12,
+    padding: '8px 10px',
+    fontFamily: 'var(--font)',
+    boxSizing: 'border-box',
+  }
   const [categoryFilter, setCategoryFilter] = useState('All')
   const [expandedKeys, setExpandedKeys] = useState(() => Object.fromEntries(MANUAL_COMPETENCIES.map(item => [item.key, false])))
   const filteredCompetencies = MANUAL_COMPETENCIES.filter(item => categoryFilter === 'All' || item.category === categoryFilter)
@@ -216,10 +237,22 @@ function ManualCompetencyEditor({ member, values = {}, onChange, onClear, summar
           </div>
         </div>
       </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, marginBottom: 12 }}>
+        <div style={{ background: 'var(--bg3)', border: '0.5px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '12px 14px' }}>
+          <div style={{ fontSize: 12, color: 'var(--text)', fontWeight: 500, marginBottom: 8 }}>Person notes</div>
+          <textarea
+            value={values.person_notes ?? mergeLegacyNotes(values.person_comments, values.person_cases)}
+            onChange={e => onTextChange(member.id, 'person_notes', e.target.value)}
+            placeholder="Overall comments, cases, achievements, or incidents for this person"
+            style={textArea}
+          />
+        </div>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 12 }}>
         {filteredCompetencies.map(item => {
           const level = values[item.key] || ''
           const expanded = !!expandedKeys[item.key]
+          const notesKey = `${item.key}_notes`
           return (
             <div key={item.key} style={{ background: 'var(--bg3)', border: '0.5px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '12px 14px' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
@@ -238,11 +271,22 @@ function ManualCompetencyEditor({ member, values = {}, onChange, onClear, summar
               </div>
               <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10 }}>{item.description}</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
-                <select value={level} onChange={e => onChange(member.id, item.key, e.target.value)} style={sel}>
+                <select value={level} onChange={e => onLevelChange(member.id, item.key, e.target.value)} style={sel}>
                   <option value="">Not set</option>
                   {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>Level {n}</option>)}
                 </select>
                 <span style={{ fontSize: 11, color: 'var(--text2)' }}>{level ? `Selected: Level ${level}` : 'Select a level from 1 to 5.'}</span>
+              </div>
+              <div style={{ marginBottom: expanded ? 10 : 0 }}>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6 }}>Notes</div>
+                  <textarea
+                    value={values[notesKey] ?? mergeLegacyNotes(values[`${item.key}_comments`], values[`${item.key}_cases`])}
+                    onChange={e => onTextChange(member.id, notesKey, e.target.value)}
+                    placeholder={`Comments, cases, or examples for ${item.title}`}
+                    style={{ ...textArea, minHeight: 64 }}
+                  />
+                </div>
               </div>
               {expanded && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -524,7 +568,8 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
         <ManualCompetencyEditor
           member={member}
           values={manualCompetencies}
-          onChange={onCompetencyChange}
+          onLevelChange={onCompetencyChange}
+          onTextChange={onCompetencyChange}
           onClear={onClearCompetencies}
           summaryScore={kpi.competencyScore}
           manualScore={kpi.manualCompetencyScore}
@@ -573,14 +618,18 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
   const [selectedMember, setSelectedMember] = React.useState(null)
   const [manualCompetencyMap, setManualCompetencyMap] = React.useState(loadManualCompetencies)
   const [manualKpiMap, setManualKpiMap] = React.useState(loadManualKpiScores)
+  const competencyKeys = React.useMemo(() => new Set(MANUAL_COMPETENCIES.map(item => item.key)), [])
 
   function updateCompetency(memberId, competencyKey, value) {
     setManualCompetencyMap(prev => {
+      const normalizedValue = competencyKeys.has(competencyKey)
+        ? (value ? Number(value) : null)
+        : value
       const next = {
         ...prev,
         [memberId]: {
           ...(prev[memberId] || {}),
-          [competencyKey]: value ? Number(value) : null,
+          [competencyKey]: normalizedValue,
         },
       }
       saveManualCompetencies(next)
@@ -616,13 +665,22 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
     .filter(m => assigneeFilter === 'all' || m.id == assigneeFilter)
 
   function exportCompetenciesCsv() {
-    const headers = ['member_id', 'member_name', ...MANUAL_COMPETENCIES.map(item => item.key)]
+    const headers = [
+      'member_id',
+      'member_name',
+      'person_notes',
+      ...MANUAL_COMPETENCIES.flatMap(item => [item.key, `${item.key}_notes`]),
+    ]
     const rows = members.map(member => {
       const competencyValues = manualCompetencyMap[member.id] || {}
       return [
         member.id,
         `"${String(member.username || member.email || '').replace(/"/g, '""')}"`,
-        ...MANUAL_COMPETENCIES.map(item => competencyValues[item.key] ?? ''),
+        `"${String(competencyValues.person_notes ?? mergeLegacyNotes(competencyValues.person_comments, competencyValues.person_cases)).replace(/"/g, '""')}"`,
+        ...MANUAL_COMPETENCIES.flatMap(item => ([
+          competencyValues[item.key] ?? '',
+          `"${String(competencyValues[`${item.key}_notes`] ?? mergeLegacyNotes(competencyValues[`${item.key}_comments`], competencyValues[`${item.key}_cases`])).replace(/"/g, '""')}"`,
+        ])),
       ]
     })
     const csv = [headers.join(','), ...rows.map(row => row.join(','))].join('\n')
