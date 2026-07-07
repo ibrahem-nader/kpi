@@ -432,6 +432,13 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
 
   const myTasks = tasks.filter(t => t.assignees?.some(a => a.id == member.id))
   const myBugs = bugTasks.filter(t => t.assignees?.some(a => a.id == member.id))
+  const combinedTaskLookup = useMemo(() => {
+    const lookup = {}
+    ;[...tasks, ...bugTasks].forEach(task => {
+      lookup[task.id] = task
+    })
+    return lookup
+  }, [tasks, bugTasks])
   const byStatus = {}
   myTasks.forEach(t => {
     const s = t.status?.status || 'unknown'
@@ -440,6 +447,19 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
   const statusData = Object.entries(byStatus).map(([name, value]) => ({ name, value }))
   const workTypeData = kpi.workTypeData.map(item => ({ ...item, fill: item.color }))
   const openTaskList = (title, items, subtitle) => setTaskListState({ title, tasks: items, subtitle })
+  const involvedMainTasks = useMemo(() => {
+    const mainTaskMap = new Map()
+    myTasks.forEach(task => {
+      if (!task.parent) {
+        mainTaskMap.set(task.id, task)
+        return
+      }
+      const parentId = typeof task.parent === 'object' ? task.parent.id : task.parent
+      const parentTask = parentId ? combinedTaskLookup[parentId] : null
+      if (parentTask) mainTaskMap.set(parentTask.id, parentTask)
+    })
+    return Array.from(mainTaskMap.values())
+  }, [myTasks, combinedTaskLookup])
   const tasksByType = {
     feature: myTasks.filter(task => classifyTaskType(task) === 'feature'),
     bug: myTasks.filter(task => classifyTaskType(task) === 'bug'),
@@ -457,7 +477,29 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         <Avatar name={member.username || member.email} index={index} />
         <div>
-          <div style={{ fontSize: 16, fontWeight: 500 }}>{member.username || member.email}</div>
+          <button
+            onClick={() => openTaskList(
+              `${member.username || member.email} · Main tasks`,
+              involvedMainTasks,
+              `${involvedMainTasks.length} main tasks from the selected scope, including parents of assigned subtasks.`
+            )}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              padding: 0,
+              margin: 0,
+              fontSize: 16,
+              fontWeight: 500,
+              color: 'var(--text)',
+              cursor: 'pointer',
+              textAlign: 'left',
+              textDecoration: 'underline',
+              textDecorationStyle: 'dotted',
+              textUnderlineOffset: 3,
+            }}
+          >
+            {member.username || member.email}
+          </button>
           <div style={{ fontSize: 12, color: 'var(--text3)' }}>{kpi.totalTasks} assigned tasks</div>
         </div>
         <div style={{ marginLeft: 'auto', textAlign: 'right', minWidth: 180 }}>
