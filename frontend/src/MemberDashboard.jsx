@@ -161,6 +161,22 @@ function saveManualKpiScores(map) {
   localStorage.setItem(MANUAL_KPI_STORAGE_KEY, JSON.stringify(map))
 }
 
+async function fetchSharedManualData() {
+  const res = await fetch('/api/manual-data')
+  if (!res.ok) throw new Error(`Failed to load shared manual data: ${res.status}`)
+  return res.json()
+}
+
+async function saveSharedManualData(competencies, manualKpis) {
+  const res = await fetch('/api/manual-data', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ competencies, manualKpis }),
+  })
+  if (!res.ok) throw new Error(`Failed to save shared manual data: ${res.status}`)
+  return res.json()
+}
+
 function mergeLegacyNotes(...parts) {
   return parts
     .map(part => String(part || '').trim())
@@ -661,6 +677,44 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
   const [manualCompetencyMap, setManualCompetencyMap] = React.useState(loadManualCompetencies)
   const [manualKpiMap, setManualKpiMap] = React.useState(loadManualKpiScores)
   const competencyKeys = React.useMemo(() => new Set(MANUAL_COMPETENCIES.map(item => item.key)), [])
+  const [sharedDataReady, setSharedDataReady] = React.useState(false)
+  const [sharedDataAvailable, setSharedDataAvailable] = React.useState(false)
+
+  React.useEffect(() => {
+    let cancelled = false
+    fetchSharedManualData()
+      .then(data => {
+        if (cancelled) return
+        const remoteCompetencies = data?.competencies && typeof data.competencies === 'object' ? data.competencies : {}
+        const remoteManualKpis = data?.manualKpis && typeof data.manualKpis === 'object' ? data.manualKpis : {}
+        if (Object.keys(remoteCompetencies).length > 0) {
+          setManualCompetencyMap(remoteCompetencies)
+          saveManualCompetencies(remoteCompetencies)
+        }
+        if (Object.keys(remoteManualKpis).length > 0) {
+          setManualKpiMap(remoteManualKpis)
+          saveManualKpiScores(remoteManualKpis)
+        }
+        setSharedDataAvailable(true)
+        setSharedDataReady(true)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setSharedDataAvailable(false)
+        setSharedDataReady(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (!sharedDataReady || !sharedDataAvailable) return
+    const timeoutId = window.setTimeout(() => {
+      saveSharedManualData(manualCompetencyMap, manualKpiMap).catch(() => {})
+    }, 400)
+    return () => window.clearTimeout(timeoutId)
+  }, [manualCompetencyMap, manualKpiMap, sharedDataReady, sharedDataAvailable])
 
   function updateCompetency(memberId, competencyKey, value) {
     setManualCompetencyMap(prev => {

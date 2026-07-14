@@ -8,6 +8,8 @@ const CLICKUP_BASE = 'api.clickup.com';
 const CLICKUP_TOKEN = process.env.CLICKUP_TOKEN || '';
 const FRONTEND_DIST = path.resolve(__dirname, '../frontend/dist');
 const INDEX_HTML = path.join(FRONTEND_DIST, 'index.html');
+const APP_DATA_DIR = path.resolve(process.env.APP_DATA_DIR || path.join(__dirname, '../data'));
+const MANUAL_DATA_FILE = path.join(APP_DATA_DIR, 'manual-data.json');
 const RUNTIME_APP_CONFIG = {
   teamId: process.env.TEAM_ID || process.env.VITE_TEAM_ID || '',
   groupId: process.env.GROUP_ID || process.env.VITE_GROUP_ID || '',
@@ -50,9 +52,68 @@ function serveFile(res, filePath) {
   });
 }
 
+function ensureDataDir() {
+  fs.mkdirSync(APP_DATA_DIR, { recursive: true });
+}
+
+function defaultManualData() {
+  return { competencies: {}, manualKpis: {} };
+}
+
+function readManualData() {
+  try {
+    ensureDataDir();
+    if (!fs.existsSync(MANUAL_DATA_FILE)) return defaultManualData();
+    const raw = fs.readFileSync(MANUAL_DATA_FILE, 'utf8');
+    const parsed = JSON.parse(raw || '{}') || {};
+    return {
+      competencies: parsed.competencies && typeof parsed.competencies === 'object' ? parsed.competencies : {},
+      manualKpis: parsed.manualKpis && typeof parsed.manualKpis === 'object' ? parsed.manualKpis : {},
+    };
+  } catch {
+    return defaultManualData();
+  }
+}
+
+function writeManualData(data) {
+  ensureDataDir();
+  const payload = {
+    competencies: data?.competencies && typeof data.competencies === 'object' ? data.competencies : {},
+    manualKpis: data?.manualKpis && typeof data.manualKpis === 'object' ? data.manualKpis : {},
+    updatedAt: new Date().toISOString(),
+  };
+  fs.writeFileSync(MANUAL_DATA_FILE, JSON.stringify(payload, null, 2));
+  return payload;
+}
+
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk;
+      if (body.length > 5 * 1024 * 1024) {
+        reject(new Error('Request body too large'));
+        req.destroy();
+      }
+    });
+    req.on('end', () => {
+      if (!body) {
+        resolve({});
+        return;
+      }
+      try {
+        resolve(JSON.parse(body));
+      } catch {
+        reject(new Error('Invalid JSON body'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
 const server = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-ClickUp-Token');
 
   if (req.method === 'OPTIONS') {
@@ -69,6 +130,26 @@ const server = http.createServer((req, res) => {
   if (req.url === '/app-config.js') {
     res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' });
     res.end(`window.__APP_CONFIG__ = ${JSON.stringify(RUNTIME_APP_CONFIG)};`);
+    return;
+  }
+
+  if (req.url === '/api/manual-data') {
+    if (req.method === 'GET') {
+      sendJson(res, 200, readManualData());
+      return;
+    }
+    if (req.method === 'PUT') {
+      readJsonBody(req)
+        .then(body => {
+          const saved = writeManualData(body);
+          sendJson(res, 200, saved);
+        })
+        .catch(error => {
+          sendJson(res, 400, { error: error.message });
+        });
+      return;
+    }
+    sendJson(res, 405, { error: 'Method not allowed' });
     return;
   }
 
