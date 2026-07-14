@@ -26,6 +26,7 @@ export function msToDays(ms) {
 }
 
 export const WORK_TYPE_ORDER = ['feature', 'bug', 'support', 'refactor', 'chore', 'other']
+const CORE_COMPETENCY_KEYS = new Set(['teamwork', 'innovation', 'ownership'])
 export const WORK_TYPE_COLOR = {
   feature: '#4f7cff',
   bug: '#f0524f',
@@ -443,8 +444,9 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
       !key.endsWith('_cases') &&
       !key.endsWith('_notes')
     )
-    .map(([, value]) => parseFloat(value))
-    .filter(value => value >= 1 && value <= 5)
+    .map(([key, value]) => ({ key, value: parseFloat(value) }))
+    .filter(({ key, value }) => value >= 1 && value <= 5 && !(CORE_COMPETENCY_KEYS.has(key) && value === 1))
+    .map(({ value }) => value)
   const manualCompetencyScore = manualCompetencyLevels.length
     ? Math.round((manualCompetencyLevels.reduce((sum, value) => sum + value, 0) / manualCompetencyLevels.length) * 10) / 10
     : null
