@@ -167,11 +167,11 @@ async function fetchSharedManualData() {
   return res.json()
 }
 
-async function saveSharedManualData(competencies, manualKpis) {
+async function saveSharedManualData(periods) {
   const res = await fetch('/api/manual-data', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ competencies, manualKpis }),
+    body: JSON.stringify({ periods }),
   })
   if (!res.ok) throw new Error(`Failed to save shared manual data: ${res.status}`)
   return res.json()
@@ -354,7 +354,7 @@ function ManualCompetencyEditor({ member, values = {}, onLevelChange, onTextChan
   )
 }
 
-function MemberCard({ member, index, tasks, bugTasks, onSelect, selected, cycleTimeMap = {}, cycleMetaMap = {}, manualCompetencies = {}, manualKpis = {} }) {
+function MemberCard({ member, index, tasks, bugTasks, onSelect, selected, cycleTimeMap = {}, cycleMetaMap = {}, manualCompetencies = {}, manualKpis = {}, clickable = true, showPersonalPageButton = true }) {
   const [taskListState, setTaskListState] = useState(null)
   const kpi = useMemo(() => calcMemberKPIs(member.id, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies, manualKpis), [member, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies, manualKpis])
   const estimateBreakdownTasks = useMemo(() => buildEstimateAccuracyBreakdown(member.id, tasks, bugTasks), [member.id, tasks, bugTasks])
@@ -362,13 +362,13 @@ function MemberCard({ member, index, tasks, bugTasks, onSelect, selected, cycleT
   return (
     <>
     <div
-      onClick={() => onSelect(selected ? null : member)}
+      onClick={clickable ? () => onSelect(selected ? null : member) : undefined}
       style={{
         background: selected ? 'var(--bg3)' : 'var(--bg2)',
         border: `0.5px solid ${selected ? ACCENT : 'var(--border)'}`,
         borderRadius: 'var(--radius)',
         padding: '1rem 1.25rem',
-        cursor: 'pointer',
+        cursor: clickable ? 'pointer' : 'default',
         transition: 'border-color 0.2s',
       }}
     >
@@ -386,26 +386,28 @@ function MemberCard({ member, index, tasks, bugTasks, onSelect, selected, cycleT
         </div>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-        <button
-          onClick={e => {
-            e.stopPropagation()
-            window.open(buildPersonalPageUrl(member.id), '_blank', 'noopener,noreferrer')
-          }}
-          style={{
-            background: 'var(--bg3)',
-            border: '0.5px solid var(--border2)',
-            borderRadius: 'var(--radius-sm)',
-            color: 'var(--text2)',
-            fontSize: 11,
-            padding: '5px 8px',
-            fontFamily: 'var(--font)',
-            cursor: 'pointer',
-          }}
-        >
-          Personal page
-        </button>
-      </div>
+      {showPersonalPageButton && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+          <button
+            onClick={e => {
+              e.stopPropagation()
+              window.open(buildPersonalPageUrl(member.id), '_blank', 'noopener,noreferrer')
+            }}
+            style={{
+              background: 'var(--bg3)',
+              border: '0.5px solid var(--border2)',
+              borderRadius: 'var(--radius-sm)',
+              color: 'var(--text2)',
+              fontSize: 11,
+              padding: '5px 8px',
+              fontFamily: 'var(--font)',
+              cursor: 'pointer',
+            }}
+          >
+            Personal page
+          </button>
+        </div>
+      )}
 
       <KpiRow label="Delivery rate" score={kpi.deliveryScore} weight="20%" barPct={kpi.deliveryScore ? kpi.deliveryScore * 20 : null} />
       <KpiRow label="Estimate accuracy" pct={kpi.estimateAccuracyPct} score={kpi.estimateAccuracyScore} weight="20%" />
@@ -735,28 +737,35 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
   )
 }
 
-export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycleTimeMap = {}, cycleMetaMap = {}, personalMemberId = null, personalOnly = false }) {
+export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycleTimeMap = {}, cycleMetaMap = {}, personalMemberId = null, personalOnly = false, manualDataWritable = true, periodKey = 'default' }) {
   const [selectedMember, setSelectedMember] = React.useState(null)
-  const [manualCompetencyMap, setManualCompetencyMap] = React.useState(loadManualCompetencies)
-  const [manualKpiMap, setManualKpiMap] = React.useState(loadManualKpiScores)
+  const [manualCompetencyByPeriod, setManualCompetencyByPeriod] = React.useState(() => ({ default: loadManualCompetencies() }))
+  const [manualKpiByPeriod, setManualKpiByPeriod] = React.useState(() => ({ default: loadManualKpiScores() }))
   const competencyKeys = React.useMemo(() => new Set(MANUAL_COMPETENCIES.map(item => item.key)), [])
   const [sharedDataReady, setSharedDataReady] = React.useState(false)
   const [sharedDataAvailable, setSharedDataAvailable] = React.useState(false)
+  const manualCompetencyMap = manualCompetencyByPeriod[periodKey] || {}
+  const manualKpiMap = manualKpiByPeriod[periodKey] || {}
 
   React.useEffect(() => {
     let cancelled = false
     fetchSharedManualData()
       .then(data => {
         if (cancelled) return
-        const remoteCompetencies = data?.competencies && typeof data.competencies === 'object' ? data.competencies : {}
-        const remoteManualKpis = data?.manualKpis && typeof data.manualKpis === 'object' ? data.manualKpis : {}
-        if (Object.keys(remoteCompetencies).length > 0) {
-          setManualCompetencyMap(remoteCompetencies)
-          saveManualCompetencies(remoteCompetencies)
+        const remotePeriods = data?.periods && typeof data.periods === 'object' ? data.periods : {}
+        const competencyPeriods = Object.fromEntries(
+          Object.entries(remotePeriods).map(([key, value]) => [key, value?.competencies && typeof value.competencies === 'object' ? value.competencies : {}])
+        )
+        const kpiPeriods = Object.fromEntries(
+          Object.entries(remotePeriods).map(([key, value]) => [key, value?.manualKpis && typeof value.manualKpis === 'object' ? value.manualKpis : {}])
+        )
+        if (Object.keys(competencyPeriods).length > 0) {
+          setManualCompetencyByPeriod(competencyPeriods)
+          saveManualCompetencies(competencyPeriods[periodKey] || competencyPeriods.default || {})
         }
-        if (Object.keys(remoteManualKpis).length > 0) {
-          setManualKpiMap(remoteManualKpis)
-          saveManualKpiScores(remoteManualKpis)
+        if (Object.keys(kpiPeriods).length > 0) {
+          setManualKpiByPeriod(kpiPeriods)
+          saveManualKpiScores(kpiPeriods[periodKey] || kpiPeriods.default || {})
         }
         setSharedDataAvailable(true)
         setSharedDataReady(true)
@@ -769,53 +778,75 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [periodKey])
 
   React.useEffect(() => {
-    if (!sharedDataReady || !sharedDataAvailable) return
+    saveManualCompetencies(manualCompetencyMap)
+  }, [manualCompetencyMap])
+
+  React.useEffect(() => {
+    saveManualKpiScores(manualKpiMap)
+  }, [manualKpiMap])
+
+  React.useEffect(() => {
+    if (!sharedDataReady || !sharedDataAvailable || !manualDataWritable) return
     const timeoutId = window.setTimeout(() => {
-      saveSharedManualData(manualCompetencyMap, manualKpiMap).catch(() => {})
+      const periods = {}
+      const keys = new Set([...Object.keys(manualCompetencyByPeriod), ...Object.keys(manualKpiByPeriod)])
+      keys.forEach(key => {
+        periods[key] = {
+          competencies: manualCompetencyByPeriod[key] || {},
+          manualKpis: manualKpiByPeriod[key] || {},
+        }
+      })
+      saveSharedManualData(periods).catch(() => {})
     }, 400)
     return () => window.clearTimeout(timeoutId)
-  }, [manualCompetencyMap, manualKpiMap, sharedDataReady, sharedDataAvailable])
+  }, [manualCompetencyByPeriod, manualKpiByPeriod, sharedDataReady, sharedDataAvailable, manualDataWritable])
 
   function updateCompetency(memberId, competencyKey, value) {
-    setManualCompetencyMap(prev => {
+    setManualCompetencyByPeriod(prev => {
       const normalizedValue = competencyKeys.has(competencyKey)
         ? (value ? Number(value) : null)
         : value
+      const currentPeriod = prev[periodKey] || {}
       const next = {
         ...prev,
-        [memberId]: {
-          ...(prev[memberId] || {}),
-          [competencyKey]: normalizedValue,
+        [periodKey]: {
+          ...currentPeriod,
+          [memberId]: {
+            ...(currentPeriod[memberId] || {}),
+            [competencyKey]: normalizedValue,
+          },
         },
       }
-      saveManualCompetencies(next)
       return next
     })
   }
 
   function clearMemberCompetencies(memberId) {
-    setManualCompetencyMap(prev => {
-      const next = { ...prev }
-      delete next[memberId]
-      saveManualCompetencies(next)
+    setManualCompetencyByPeriod(prev => {
+      const currentPeriod = { ...(prev[periodKey] || {}) }
+      delete currentPeriod[memberId]
+      const next = { ...prev, [periodKey]: currentPeriod }
       return next
     })
   }
 
   function updateManualKpi(memberId, key, value) {
-    setManualKpiMap(prev => {
-      const current = prev[memberId] || {}
+    setManualKpiByPeriod(prev => {
+      const currentPeriod = prev[periodKey] || {}
+      const current = currentPeriod[memberId] || {}
       const next = {
         ...prev,
-        [memberId]: {
-          ...current,
-          [key]: value ? Number(value) : 3,
+        [periodKey]: {
+          ...currentPeriod,
+          [memberId]: {
+            ...current,
+            [key]: value ? Number(value) : 3,
+          },
         },
       }
-      saveManualKpiScores(next)
       return next
     })
   }
@@ -876,6 +907,22 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
         <Card>
           <div style={{ fontSize: 14, color: 'var(--text)' }}>Member not found for this personal page.</div>
         </Card>
+      )}
+      {personalOnly && personalMember && (
+        <MemberCard
+          member={personalMember}
+          index={members.indexOf(personalMember)}
+          tasks={tasks}
+          bugTasks={bugTasks}
+          onSelect={() => {}}
+          selected
+          cycleTimeMap={cycleTimeMap}
+          cycleMetaMap={cycleMetaMap}
+          manualCompetencies={manualCompetencyMap[personalMember.id] || {}}
+          manualKpis={manualKpiMap[personalMember.id] || {}}
+          clickable={false}
+          showPersonalPageButton={false}
+        />
       )}
       {selectedMember && (
         <MemberDetail

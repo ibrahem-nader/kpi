@@ -16,6 +16,46 @@ const DEFAULT_YEAR = 2026
 const DEFAULT_HALVES = ['H1']
 const THEME_STORAGE_KEY = 'kpi_dashboard_theme'
 
+function LoginScreen({ themeToggle, loading, error, onSubmit }) {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const inp  = { width: '100%', fontSize: 13, padding: '8px 10px', background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', outline: 'none' }
+  const lbl  = { fontSize: 11, color: 'var(--text2)', marginBottom: 4, display: 'block' }
+
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', position: 'relative' }}>
+      <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 20 }}>
+        {themeToggle}
+      </div>
+      <div style={{ width: '100%', maxWidth: 420 }}>
+        <div style={{ marginBottom: '2rem' }}>
+          <div style={{ fontSize: 11, color: 'var(--accent)', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>Garment IO</div>
+          <h1 style={{ fontSize: 24, fontWeight: 500, color: 'var(--text)', marginBottom: 6 }}>Sign in</h1>
+          <p style={{ fontSize: 13, color: 'var(--text2)' }}>Use your dashboard account to access KPI data.</p>
+        </div>
+        {error && <ErrorBox message={error} />}
+        <div style={{ background: 'var(--bg2)', border: '0.5px solid var(--border)', borderRadius: 'var(--radius)', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <label style={lbl}>Username</label>
+            <input type="text" style={inp} value={username} onChange={e => setUsername(e.target.value)} />
+          </div>
+          <div>
+            <label style={lbl}>Password</label>
+            <input type="password" style={inp} value={password} onChange={e => setPassword(e.target.value)} />
+          </div>
+          <button
+            onClick={() => onSubmit(username, password)}
+            disabled={loading}
+            style={{ background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)', padding: '10px 20px', fontSize: 13, fontWeight: 500, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1, marginTop: 4 }}
+          >
+            {loading ? 'Signing in…' : 'Sign in'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function buildHalfRange(year, halves) {
   const selected = new Set(halves)
   if (selected.has('H1') && selected.has('H2')) return { from: `${year}-01-01`, to: `${year}-12-31` }
@@ -45,11 +85,10 @@ function parseListIds(value) {
 }
 
 export default function App() {
-  const personalMemberId = useMemo(() => {
+  const urlPersonalMemberId = useMemo(() => {
     if (typeof window === 'undefined') return ''
     return new URLSearchParams(window.location.search).get('memberId') || ''
   }, [])
-  const personalOnly = !!personalMemberId
   const [themeMode, setThemeMode]         = useState(() => {
     try {
       const saved = localStorage.getItem(THEME_STORAGE_KEY)
@@ -70,18 +109,67 @@ export default function App() {
   const [cycleMetaMap, setCycleMetaMap]     = useState({})
   const [cycleTimeNote, setCycleTimeNote]   = useState('')
   const [cycleProgress, setCycleProgress]   = useState(null)
-  const [tab, setTab]                       = useState(personalOnly ? 'team' : 'sprint')
+  const [tab, setTab]                       = useState('sprint')
   const [assigneeFilter, setAssigneeFilter] = useState('all')
   const [dateFrom, setDateFrom]             = useState(KPI_PERIOD_START)
   const [dateTo, setDateTo]                 = useState(KPI_PERIOD_END)
   const [selectedYear, setSelectedYear]     = useState(DEFAULT_YEAR)
   const [selectedHalves, setSelectedHalves] = useState(DEFAULT_HALVES)
   const [advancedDates, setAdvancedDates]   = useState(false)
+  const [authStatus, setAuthStatus]         = useState({ enabled: false, authenticated: true, user: null })
+  const [authReady, setAuthReady]           = useState(false)
+  const [authLoading, setAuthLoading]       = useState(false)
+  const [authError, setAuthError]           = useState(null)
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', themeMode)
     localStorage.setItem(THEME_STORAGE_KEY, themeMode)
   }, [themeMode])
+
+  const refreshAuthStatus = useCallback(async () => {
+    const res = await fetch('/api/auth/status')
+    if (!res.ok) throw new Error(`Auth status failed: ${res.status}`)
+    const data = await res.json()
+    setAuthStatus(data)
+    setAuthReady(true)
+    return data
+  }, [])
+
+  useEffect(() => {
+    refreshAuthStatus().catch(() => {
+      setAuthStatus({ enabled: false, authenticated: true, user: null })
+      setAuthReady(true)
+    })
+  }, [refreshAuthStatus])
+
+  const effectivePersonalMemberId = authStatus?.user?.role === 'employee'
+    ? String(authStatus.user.memberId || '')
+    : urlPersonalMemberId
+  const personalOnly = (authStatus?.user?.role === 'employee') || !!effectivePersonalMemberId
+  const canSeeAllView = !authStatus?.enabled || !authStatus?.user || authStatus.user.role === 'admin' || authStatus.user.role === 'manager'
+
+  async function login(username, password) {
+    setAuthLoading(true)
+    setAuthError(null)
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || `Login failed: ${res.status}`)
+      setAuthStatus(data)
+    } catch (e) {
+      setAuthError(e.message)
+    }
+    setAuthLoading(false)
+  }
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
+    setAuthStatus({ enabled: true, authenticated: false, user: null })
+  }
 
   const muiTheme = useMemo(() => createTheme({
     palette: {
@@ -192,7 +280,11 @@ export default function App() {
     }
   }, [loadTasks])
 
-  useEffect(() => { if (config) load(config) }, [])
+  useEffect(() => {
+    if (!authReady) return
+    if (authStatus.enabled && !authStatus.authenticated) return
+    if (config) load(config)
+  }, [config, load, authReady, authStatus.enabled, authStatus.authenticated])
 
   async function applyDateFilter() {
     await loadTasks(config, sprints, dateFrom, dateTo)
@@ -250,6 +342,9 @@ export default function App() {
   )
   const hasDateFilter = dateFrom || dateTo
   const officialScopeName = `All sources (${sprints.length + extraSources.length})`
+  const manualPeriodKey = advancedDates
+    ? `custom:${dateFrom || 'start'}:${dateTo || 'end'}`
+    : `half:${selectedYear}:${selectedHalves.slice().sort().join('+') || 'H1'}`
   const yearOptions = Array.from(new Set([
     DEFAULT_YEAR,
     ...sprints.map(s => {
@@ -263,6 +358,34 @@ export default function App() {
       {themeMode === 'dark' ? 'Light mode' : 'Dark mode'}
     </button>
   )
+
+  useEffect(() => {
+    setTab(personalOnly ? 'team' : 'sprint')
+  }, [personalOnly])
+
+  if (!authReady) {
+    return (
+      <ThemeProvider theme={muiTheme}>
+        <CssBaseline />
+        <LocalizationProvider dateAdapter={AdapterDayjs}>
+          <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Spinner />
+          </div>
+        </LocalizationProvider>
+      </ThemeProvider>
+    )
+  }
+
+  if (authStatus.enabled && !authStatus.authenticated) {
+    return (
+      <ThemeProvider theme={muiTheme}>
+        <CssBaseline />
+        <LocalizationProvider dateAdapter={AdapterDayjs}>
+          <LoginScreen themeToggle={themeToggle} loading={authLoading} error={authError} onSubmit={login} />
+        </LocalizationProvider>
+      </ThemeProvider>
+    )
+  }
 
   if (!config) {
     const partial = (() => { try { return JSON.parse(localStorage.getItem('kpi_dashboard_config') || 'null') } catch { return null } })()
@@ -293,13 +416,15 @@ export default function App() {
         {!personalOnly && (
           <div style={{ display: 'flex', gap: 6, marginLeft: 8 }}>
             {navBtn('sprint', 'Sprint')}
-            {navBtn('team', 'Team KPIs')}
+            {canSeeAllView && navBtn('team', 'Team KPIs')}
           </div>
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           {themeToggle}
           <button onClick={() => load(config)} style={{ ...sel, fontSize: 11 }}>Refresh</button>
-          {!personalOnly && <button onClick={() => { localStorage.clear(); setConfig(null) }} style={{ ...sel, fontSize: 11, color: 'var(--text3)' }}>Disconnect</button>}
+          {authStatus.enabled
+            ? <button onClick={logout} style={{ ...sel, fontSize: 11, color: 'var(--text3)' }}>Logout</button>
+            : (!personalOnly && <button onClick={() => { localStorage.clear(); setConfig(null) }} style={{ ...sel, fontSize: 11, color: 'var(--text3)' }}>Disconnect</button>)}
         </div>
       </div>
 
@@ -366,7 +491,7 @@ export default function App() {
           <button onClick={applyH1Preset} style={{ ...sel, fontSize: 11 }}>Reset H1</button>
         </div>
 
-        {!personalOnly && tab === 'team' && (
+        {!personalOnly && canSeeAllView && tab === 'team' && (
           <>
             <span style={{ color: 'var(--border2)', fontSize: 16 }}>|</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -401,7 +526,20 @@ export default function App() {
             </div>
           : <>
               {tab === 'sprint' && <SprintDashboard tasks={tasks} bugTasks={bugTasks} sprintName={officialScopeName} sourceKind="all-sources" cycleTimeMap={cycleTimeMap} cycleMetaMap={cycleMetaMap} cycleTimeNote={cycleTimeNote} />}
-              {tab === 'team'   && <MemberDashboard members={members} tasks={tasks} bugTasks={bugTasks} assigneeFilter={assigneeFilter} cycleTimeMap={cycleTimeMap} cycleMetaMap={cycleMetaMap} personalMemberId={personalMemberId} personalOnly={personalOnly} />}
+              {tab === 'team' && (personalOnly || canSeeAllView) && (
+                <MemberDashboard
+                  members={members}
+                  tasks={tasks}
+                  bugTasks={bugTasks}
+                  assigneeFilter={assigneeFilter}
+                  cycleTimeMap={cycleTimeMap}
+                  cycleMetaMap={cycleMetaMap}
+                  personalMemberId={effectivePersonalMemberId}
+                  personalOnly={personalOnly}
+                  manualDataWritable={canSeeAllView && !personalOnly}
+                  periodKey={manualPeriodKey}
+                />
+              )}
             </>
         }
       </div>
