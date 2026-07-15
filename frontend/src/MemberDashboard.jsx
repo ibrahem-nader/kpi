@@ -749,6 +749,34 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
   const [sharedDataAvailable, setSharedDataAvailable] = React.useState(false)
   const manualCompetencyMap = manualCompetencyByPeriod[periodKey] || {}
   const manualKpiMap = manualKpiByPeriod[periodKey] || {}
+  const memberCatalog = React.useMemo(() => {
+    const map = new Map()
+    const addMember = (member) => {
+      if (!member?.id) return
+      const key = String(member.id)
+      const current = map.get(key) || {}
+      map.set(key, {
+        ...current,
+        ...member,
+        id: member.id,
+        username: member.username || current.username || member.email || current.email || `Member ${member.id}`,
+        email: member.email || current.email || '',
+      })
+    }
+
+    members.forEach(addMember)
+    ;[...tasks, ...bugTasks].forEach(task => {
+      ;(task.assignees || []).forEach(assignee => {
+        addMember({
+          id: assignee.id,
+          username: assignee.username || assignee.email || assignee.initials || assignee.name,
+          email: assignee.email || '',
+        })
+      })
+    })
+
+    return Array.from(map.values())
+  }, [members, tasks, bugTasks])
 
   React.useEffect(() => {
     let cancelled = false
@@ -854,9 +882,9 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
     })
   }
 
-  const filtered = members
+  const filtered = memberCatalog
     .filter(m => personalOnly ? String(m.id) === String(personalMemberId) : (assigneeFilter === 'all' || m.id == assigneeFilter))
-  const personalMember = personalOnly ? members.find(m => String(m.id) === String(personalMemberId)) : null
+  const personalMember = personalOnly ? memberCatalog.find(m => String(m.id) === String(personalMemberId)) : null
 
   React.useEffect(() => {
     if (!personalOnly) return
@@ -870,7 +898,7 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
       'person_notes',
       ...MANUAL_COMPETENCIES.flatMap(item => [item.key, `${item.key}_notes`]),
     ]
-    const rows = members.map(member => {
+    const rows = memberCatalog.map(member => {
       const competencyValues = manualCompetencyMap[member.id] || {}
       return [
         member.id,
@@ -914,7 +942,7 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
       {personalOnly && personalMember && (
         <MemberCard
           member={personalMember}
-          index={members.indexOf(personalMember)}
+          index={Math.max(0, memberCatalog.findIndex(m => String(m.id) === String(personalMember.id)))}
           tasks={tasks}
           bugTasks={bugTasks}
           onSelect={() => {}}
@@ -930,7 +958,7 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
       {selectedMember && (
         <MemberDetail
           member={selectedMember}
-          index={members.indexOf(selectedMember)}
+          index={Math.max(0, memberCatalog.findIndex(m => String(m.id) === String(selectedMember.id)))}
           tasks={tasks}
           bugTasks={bugTasks}
           cycleTimeMap={cycleTimeMap}
