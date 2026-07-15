@@ -185,7 +185,13 @@ function mergeLegacyNotes(...parts) {
     .join('\n\n')
 }
 
-function ManualCompetencyEditor({ member, values = {}, onLevelChange, onTextChange, onClear, summaryScore, manualScore, disciplineScore }) {
+function buildPersonalPageUrl(memberId) {
+  const url = new URL(window.location.href)
+  url.searchParams.set('memberId', String(memberId))
+  return url.toString()
+}
+
+function ManualCompetencyEditor({ member, values = {}, onLevelChange, onTextChange, onClear, summaryScore, manualScore, disciplineScore, readOnly = false }) {
   const sel = { background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', fontSize: 12, padding: '6px 10px', fontFamily: 'var(--font)', cursor: 'pointer' }
   const textArea = {
     width: '100%',
@@ -218,6 +224,7 @@ function ManualCompetencyEditor({ member, values = {}, onLevelChange, onTextChan
               <button
                 key={option}
                 onClick={() => setCategoryFilter(option)}
+                disabled={false}
                 style={{
                   ...sel,
                   fontSize: 11,
@@ -229,18 +236,20 @@ function ManualCompetencyEditor({ member, values = {}, onLevelChange, onTextChan
                 {option}
               </button>
             ))}
-            <button
-              onClick={() => onClear(member.id)}
-              style={{
-                ...sel,
-                fontSize: 11,
-                background: '#2b0f0f',
-                color: '#f0524f',
-                border: '0.5px solid #f0524f44',
-              }}
-            >
-              Clear person
-            </button>
+            {!readOnly && (
+              <button
+                onClick={() => onClear(member.id)}
+                style={{
+                  ...sel,
+                  fontSize: 11,
+                  background: '#2b0f0f',
+                  color: '#f0524f',
+                  border: '0.5px solid #f0524f44',
+                }}
+              >
+                Clear person
+              </button>
+            )}
           </div>
           <div style={{ fontSize: 12, color: 'var(--text2)' }}>
             <HelpLabel label="Competency score" />: <span style={{ color: 'var(--text)', fontFamily: 'var(--mono)' }}>{summaryScore || '—'}/5</span>
@@ -261,6 +270,7 @@ function ManualCompetencyEditor({ member, values = {}, onLevelChange, onTextChan
             onChange={e => onTextChange(member.id, 'person_notes', e.target.value)}
             placeholder="Overall comments, cases, achievements, or incidents for this person"
             style={textArea}
+            readOnly={readOnly}
           />
         </div>
       </div>
@@ -287,10 +297,14 @@ function ManualCompetencyEditor({ member, values = {}, onLevelChange, onTextChan
               </div>
               <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10 }}>{item.description}</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
-                <select value={level} onChange={e => onLevelChange(member.id, item.key, e.target.value)} style={sel}>
-                  <option value="">Not set</option>
-                  {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>Level {n}</option>)}
-                </select>
+                {readOnly ? (
+                  <span style={{ ...sel, cursor: 'default' }}>{level ? `Level ${level}` : 'Not set'}</span>
+                ) : (
+                  <select value={level} onChange={e => onLevelChange(member.id, item.key, e.target.value)} style={sel}>
+                    <option value="">Not set</option>
+                    {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>Level {n}</option>)}
+                  </select>
+                )}
                 <span style={{ fontSize: 11, color: 'var(--text2)' }}>{level ? `Selected: Level ${level}` : 'Select a level from 1 to 5.'}</span>
               </div>
               <div style={{ marginBottom: expanded ? 10 : 0 }}>
@@ -301,6 +315,7 @@ function ManualCompetencyEditor({ member, values = {}, onLevelChange, onTextChan
                     onChange={e => onTextChange(member.id, notesKey, e.target.value)}
                     placeholder={`Comments, cases, or examples for ${item.title}`}
                     style={{ ...textArea, minHeight: 64 }}
+                    readOnly={readOnly}
                   />
                 </div>
               </div>
@@ -371,6 +386,27 @@ function MemberCard({ member, index, tasks, bugTasks, onSelect, selected, cycleT
         </div>
       </div>
 
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+        <button
+          onClick={e => {
+            e.stopPropagation()
+            window.open(buildPersonalPageUrl(member.id), '_blank', 'noopener,noreferrer')
+          }}
+          style={{
+            background: 'var(--bg3)',
+            border: '0.5px solid var(--border2)',
+            borderRadius: 'var(--radius-sm)',
+            color: 'var(--text2)',
+            fontSize: 11,
+            padding: '5px 8px',
+            fontFamily: 'var(--font)',
+            cursor: 'pointer',
+          }}
+        >
+          Personal page
+        </button>
+      </div>
+
       <KpiRow label="Delivery rate" score={kpi.deliveryScore} weight="20%" barPct={kpi.deliveryScore ? kpi.deliveryScore * 20 : null} />
       <KpiRow label="Estimate accuracy" pct={kpi.estimateAccuracyPct} score={kpi.estimateAccuracyScore} weight="20%" />
       <KpiRow label="On-time delivery" pct={kpi.onTimePct} score={kpi.onTimeScore} weight="20%" />
@@ -434,7 +470,7 @@ function MemberCard({ member, index, tasks, bugTasks, onSelect, selected, cycleT
   )
 }
 
-function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap = {}, manualCompetencies = {}, manualKpis = {}, onCompetencyChange, onClearCompetencies, onManualKpiChange, onClose }) {
+function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap = {}, manualCompetencies = {}, manualKpis = {}, onCompetencyChange, onClearCompetencies, onManualKpiChange, onClose, readOnly = false, showClose = true }) {
   const [taskListState, setTaskListState] = useState(null)
   const kpi = useMemo(() => calcMemberKPIs(member.id, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies, manualKpis), [member, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies, manualKpis])
 
@@ -519,22 +555,42 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
           <div style={{ fontSize: 12, color: 'var(--text3)' }}>{kpi.totalTasks} assigned tasks</div>
         </div>
         <div style={{ marginLeft: 'auto', textAlign: 'right', minWidth: 180 }}>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'var(--bg3)',
-              border: '0.5px solid var(--border2)',
-              borderRadius: 'var(--radius-sm)',
-              color: 'var(--text2)',
-              fontSize: 11,
-              padding: '5px 8px',
-              fontFamily: 'var(--font)',
-              cursor: 'pointer',
-              marginBottom: 8,
-            }}
-          >
-            Close
-          </button>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+            {!readOnly && (
+              <button
+                onClick={() => window.open(buildPersonalPageUrl(member.id), '_blank', 'noopener,noreferrer')}
+                style={{
+                  background: 'var(--bg3)',
+                  border: '0.5px solid var(--border2)',
+                  borderRadius: 'var(--radius-sm)',
+                  color: 'var(--text2)',
+                  fontSize: 11,
+                  padding: '5px 8px',
+                  fontFamily: 'var(--font)',
+                  cursor: 'pointer',
+                }}
+              >
+                Open personal page
+              </button>
+            )}
+            {showClose && (
+              <button
+                onClick={onClose}
+                style={{
+                  background: 'var(--bg3)',
+                  border: '0.5px solid var(--border2)',
+                  borderRadius: 'var(--radius-sm)',
+                  color: 'var(--text2)',
+                  fontSize: 11,
+                  padding: '5px 8px',
+                  fontFamily: 'var(--font)',
+                  cursor: 'pointer',
+                }}
+              >
+                Close
+              </button>
+            )}
+          </div>
           <div style={{ fontSize: 11, color: 'var(--text3)' }}><HelpLabel label="Weighted score" /></div>
           <ScoreBadge score={kpi.weightedScore} />
           <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 6 }}>
@@ -550,13 +606,19 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
             <div style={{ fontSize: 12, color: 'var(--text2)' }}>
               <HelpLabel label="Code Quality Review Score" />:
             </div>
-            <select
-              value={manualKpis.codeQualityReviewScore ?? 3}
-              onChange={e => onManualKpiChange(member.id, 'codeQualityReviewScore', e.target.value)}
-              style={{ background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', fontSize: 12, padding: '6px 10px', fontFamily: 'var(--font)', cursor: 'pointer' }}
-            >
-              {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}/5</option>)}
-            </select>
+            {readOnly ? (
+              <span style={{ background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', fontSize: 12, padding: '6px 10px', fontFamily: 'var(--font)' }}>
+                {manualKpis.codeQualityReviewScore ?? 3}/5
+              </span>
+            ) : (
+              <select
+                value={manualKpis.codeQualityReviewScore ?? 3}
+                onChange={e => onManualKpiChange(member.id, 'codeQualityReviewScore', e.target.value)}
+                style={{ background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', fontSize: 12, padding: '6px 10px', fontFamily: 'var(--font)', cursor: 'pointer' }}
+              >
+                {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}/5</option>)}
+              </select>
+            )}
           </div>
           <div style={{ height: 180 }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -632,6 +694,7 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
           summaryScore={kpi.competencyScore}
           manualScore={kpi.manualCompetencyScore}
           disciplineScore={kpi.disciplineScore}
+          readOnly={readOnly}
         />
       </div>
 
@@ -672,7 +735,7 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
   )
 }
 
-export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycleTimeMap = {}, cycleMetaMap = {} }) {
+export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycleTimeMap = {}, cycleMetaMap = {}, personalMemberId = null, personalOnly = false }) {
   const [selectedMember, setSelectedMember] = React.useState(null)
   const [manualCompetencyMap, setManualCompetencyMap] = React.useState(loadManualCompetencies)
   const [manualKpiMap, setManualKpiMap] = React.useState(loadManualKpiScores)
@@ -758,7 +821,13 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
   }
 
   const filtered = members
-    .filter(m => assigneeFilter === 'all' || m.id == assigneeFilter)
+    .filter(m => personalOnly ? String(m.id) === String(personalMemberId) : (assigneeFilter === 'all' || m.id == assigneeFilter))
+  const personalMember = personalOnly ? members.find(m => String(m.id) === String(personalMemberId)) : null
+
+  React.useEffect(() => {
+    if (!personalOnly) return
+    setSelectedMember(personalMember || null)
+  }, [personalOnly, personalMember])
 
   function exportCompetenciesCsv() {
     const headers = [
@@ -793,14 +862,21 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8 }}>
-        <button
-          onClick={exportCompetenciesCsv}
-          style={{ background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', fontSize: 12, padding: '6px 10px', fontFamily: 'var(--font)', cursor: 'pointer' }}
-        >
-          Export competencies CSV
-        </button>
-      </div>
+      {!personalOnly && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8 }}>
+          <button
+            onClick={exportCompetenciesCsv}
+            style={{ background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', fontSize: 12, padding: '6px 10px', fontFamily: 'var(--font)', cursor: 'pointer' }}
+          >
+            Export competencies CSV
+          </button>
+        </div>
+      )}
+      {personalOnly && !personalMember && (
+        <Card>
+          <div style={{ fontSize: 14, color: 'var(--text)' }}>Member not found for this personal page.</div>
+        </Card>
+      )}
       {selectedMember && (
         <MemberDetail
           member={selectedMember}
@@ -815,25 +891,29 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
           onClearCompetencies={clearMemberCompetencies}
           onManualKpiChange={updateManualKpi}
           onClose={() => setSelectedMember(null)}
+          readOnly={personalOnly}
+          showClose={!personalOnly}
         />
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12 }}>
-        {filtered.map((m, i) => (
-          <MemberCard
-            key={m.id}
-            member={m}
-            index={i}
-            tasks={tasks}
-            bugTasks={bugTasks}
-            onSelect={setSelectedMember}
-            selected={selectedMember?.id === m.id}
-            cycleTimeMap={cycleTimeMap}
-            cycleMetaMap={cycleMetaMap}
-            manualCompetencies={manualCompetencyMap[m.id] || {}}
-            manualKpis={manualKpiMap[m.id] || {}}
-          />
-        ))}
-      </div>
+      {!personalOnly && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12 }}>
+          {filtered.map((m, i) => (
+            <MemberCard
+              key={m.id}
+              member={m}
+              index={i}
+              tasks={tasks}
+              bugTasks={bugTasks}
+              onSelect={setSelectedMember}
+              selected={selectedMember?.id === m.id}
+              cycleTimeMap={cycleTimeMap}
+              cycleMetaMap={cycleMetaMap}
+              manualCompetencies={manualCompetencyMap[m.id] || {}}
+              manualKpis={manualKpiMap[m.id] || {}}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

@@ -45,6 +45,11 @@ function parseListIds(value) {
 }
 
 export default function App() {
+  const personalMemberId = useMemo(() => {
+    if (typeof window === 'undefined') return ''
+    return new URLSearchParams(window.location.search).get('memberId') || ''
+  }, [])
+  const personalOnly = !!personalMemberId
   const [themeMode, setThemeMode]         = useState(() => {
     try {
       const saved = localStorage.getItem(THEME_STORAGE_KEY)
@@ -65,7 +70,7 @@ export default function App() {
   const [cycleMetaMap, setCycleMetaMap]     = useState({})
   const [cycleTimeNote, setCycleTimeNote]   = useState('')
   const [cycleProgress, setCycleProgress]   = useState(null)
-  const [tab, setTab]                       = useState('sprint')
+  const [tab, setTab]                       = useState(personalOnly ? 'team' : 'sprint')
   const [assigneeFilter, setAssigneeFilter] = useState('all')
   const [dateFrom, setDateFrom]             = useState(KPI_PERIOD_START)
   const [dateTo, setDateTo]                 = useState(KPI_PERIOD_END)
@@ -284,15 +289,17 @@ export default function App() {
       <div style={{ borderBottom: '0.5px solid var(--border)', padding: '0 1.5rem', display: 'flex', alignItems: 'center', gap: 16, height: 52, position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 10 }}>
         <span style={{ fontSize: 11, color: 'var(--accent)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Garment IO</span>
         <span style={{ color: 'var(--border2)' }}>|</span>
-        <span style={{ fontSize: 13, color: 'var(--text2)' }}>KPI Dashboard</span>
-        <div style={{ display: 'flex', gap: 6, marginLeft: 8 }}>
-          {navBtn('sprint', 'Sprint')}
-          {navBtn('team', 'Team KPIs')}
-        </div>
+        <span style={{ fontSize: 13, color: 'var(--text2)' }}>{personalOnly ? 'Personal KPI Page' : 'KPI Dashboard'}</span>
+        {!personalOnly && (
+          <div style={{ display: 'flex', gap: 6, marginLeft: 8 }}>
+            {navBtn('sprint', 'Sprint')}
+            {navBtn('team', 'Team KPIs')}
+          </div>
+        )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           {themeToggle}
           <button onClick={() => load(config)} style={{ ...sel, fontSize: 11 }}>Refresh</button>
-          <button onClick={() => { localStorage.clear(); setConfig(null) }} style={{ ...sel, fontSize: 11, color: 'var(--text3)' }}>Disconnect</button>
+          {!personalOnly && <button onClick={() => { localStorage.clear(); setConfig(null) }} style={{ ...sel, fontSize: 11, color: 'var(--text3)' }}>Disconnect</button>}
         </div>
       </div>
 
@@ -359,7 +366,7 @@ export default function App() {
           <button onClick={applyH1Preset} style={{ ...sel, fontSize: 11 }}>Reset H1</button>
         </div>
 
-        {tab === 'team' && (
+        {!personalOnly && tab === 'team' && (
           <>
             <span style={{ color: 'var(--border2)', fontSize: 16 }}>|</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -394,7 +401,7 @@ export default function App() {
             </div>
           : <>
               {tab === 'sprint' && <SprintDashboard tasks={tasks} bugTasks={bugTasks} sprintName={officialScopeName} sourceKind="all-sources" cycleTimeMap={cycleTimeMap} cycleMetaMap={cycleMetaMap} cycleTimeNote={cycleTimeNote} />}
-              {tab === 'team'   && <MemberDashboard members={members} tasks={tasks} bugTasks={bugTasks} assigneeFilter={assigneeFilter} cycleTimeMap={cycleTimeMap} cycleMetaMap={cycleMetaMap} />}
+              {tab === 'team'   && <MemberDashboard members={members} tasks={tasks} bugTasks={bugTasks} assigneeFilter={assigneeFilter} cycleTimeMap={cycleTimeMap} cycleMetaMap={cycleMetaMap} personalMemberId={personalMemberId} personalOnly={personalOnly} />}
             </>
         }
       </div>
