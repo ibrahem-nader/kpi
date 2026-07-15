@@ -6,6 +6,7 @@ import { buildEstimateAccuracyBreakdown, calcMemberKPIs, classifyTaskType, getWo
 const ACCENT = '#4f7cff'
 const COMPETENCY_STORAGE_KEY = 'kpi_manual_competencies_v1'
 const MANUAL_KPI_STORAGE_KEY = 'kpi_manual_scores_v1'
+const PERSONAL_ACCESS_ENABLED = typeof window !== 'undefined' && !!new URLSearchParams(window.location.search).get('memberId')
 const LEVEL_COLORS = {
   Strong: { color: '#3ecf8e', bg: '#0d2b1a' },
   Solid: { color: '#4f7cff', bg: '#0d1f3a' },
@@ -162,7 +163,9 @@ function saveManualKpiScores(map) {
 }
 
 async function fetchSharedManualData() {
-  const res = await fetch('/api/manual-data')
+  const res = await fetch('/api/manual-data', {
+    headers: PERSONAL_ACCESS_ENABLED ? { 'X-KPI-Personal-Access': '1' } : undefined,
+  })
   if (!res.ok) throw new Error(`Failed to load shared manual data: ${res.status}`)
   return res.json()
 }

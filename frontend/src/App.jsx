@@ -376,7 +376,7 @@ export default function App() {
     )
   }
 
-  if (authStatus.enabled && !authStatus.authenticated) {
+  if (authStatus.enabled && !authStatus.authenticated && !urlPersonalMemberId) {
     return (
       <ThemeProvider theme={muiTheme}>
         <CssBaseline />
