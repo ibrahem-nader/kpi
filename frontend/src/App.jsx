@@ -195,7 +195,7 @@ export default function App() {
   const loadTasks = useCallback(async (cfg, sprintList, from, to) => {
     setLoading(true); setError(null)
     try {
-      const list = sprintList || sprints
+      const list = sprintList || []
       const extraListIds = parseListIds(cfg.backlogListId)
       const ids = [...new Set([...list.map(s => s.id), ...extraListIds])]
       setLoadingLabel(`Loading official KPI scope (${ids.length} sources)…`)
@@ -242,7 +242,7 @@ export default function App() {
       }
     } catch (e) { setError(e.message) }
     setLoading(false); setLoadingLabel('')
-  }, [sprints])
+  }, [])
 
   const load = useCallback(async (cfg) => {
     if (!cfg) return
