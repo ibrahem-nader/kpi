@@ -13,6 +13,7 @@ const APP_DATA_DIR = path.resolve(process.env.APP_DATA_DIR || path.join(__dirnam
 const MANUAL_DATA_FILE = path.join(APP_DATA_DIR, 'manual-data.json');
 const SESSION_COOKIE = 'kpi_session';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+const PERSONAL_ACCESS_HEADER = 'x-kpi-personal-access';
 const authUsers = parseAuthUsers(process.env.AUTH_USERS_JSON || process.env.KPI_AUTH_USERS || '');
 const authEnabled = authUsers.length > 0;
 const sessions = new Map();
@@ -143,6 +144,10 @@ function requireAuth(req, res) {
 
 function canWriteManualData(user) {
   return user && (user.role === 'admin' || user.role === 'manager');
+}
+
+function isPersonalAccessRequest(req) {
+  return String(req.headers[PERSONAL_ACCESS_HEADER] || '') === '1';
 }
 
 function ensureDataDir() {
@@ -290,13 +295,17 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.url === '/api/manual-data') {
-    const user = requireAuth(req, res);
-    if (!user) return;
     if (req.method === 'GET') {
+      if (authEnabled && !isPersonalAccessRequest(req)) {
+        const user = requireAuth(req, res);
+        if (!user) return;
+      }
       sendJson(res, 200, readManualData());
       return;
     }
     if (req.method === 'PUT') {
+      const user = requireAuth(req, res);
+      if (!user) return;
       if (!canWriteManualData(user)) {
         sendJson(res, 403, { error: 'Only managers or admins can update manual data' });
         return;
@@ -315,7 +324,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (authEnabled && req.url.startsWith('/api/v2/')) {
+  if (authEnabled && req.url.startsWith('/api/v2/') && !isPersonalAccessRequest(req)) {
     const user = requireAuth(req, res);
     if (!user) return;
   }
