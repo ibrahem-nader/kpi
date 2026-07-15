@@ -1,4 +1,11 @@
 const BASE = '/api/v2'
+const PERSONAL_ACCESS_ENABLED = typeof window !== 'undefined' && !!new URLSearchParams(window.location.search).get('memberId')
+
+function buildHeaders(token) {
+  const headers = { 'X-ClickUp-Token': token, 'Content-Type': 'application/json' }
+  if (PERSONAL_ACCESS_ENABLED) headers['X-KPI-Personal-Access'] = '1'
+  return headers
+}
 
 function normalizeWorkflowStatus(status) {
   const s = (status || '').toLowerCase().trim()
@@ -13,7 +20,7 @@ function normalizeWorkflowStatus(status) {
 
 async function get(path, token) {
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'X-ClickUp-Token': token, 'Content-Type': 'application/json' },
+    headers: buildHeaders(token),
   })
   if (!res.ok) {
     const text = await res.text()
