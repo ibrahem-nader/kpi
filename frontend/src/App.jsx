@@ -282,9 +282,9 @@ export default function App() {
 
   useEffect(() => {
     if (!authReady) return
-    if (authStatus.enabled && !authStatus.authenticated) return
+    if (authStatus.enabled && !authStatus.authenticated && !urlPersonalMemberId) return
     if (config) load(config)
-  }, [config, load, authReady, authStatus.enabled, authStatus.authenticated])
+  }, [config, load, authReady, authStatus.enabled, authStatus.authenticated, urlPersonalMemberId])
 
   async function applyDateFilter() {
     await loadTasks(config, sprints, dateFrom, dateTo)
