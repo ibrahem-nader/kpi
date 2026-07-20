@@ -9,3 +9,11 @@ services:
     envVars:
       - key: CLICKUP_TOKEN
         sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_TABLE
+        value: kpi_manual_data
+      - key: SUPABASE_ROW_KEY
+        value: global

@@ -7,9 +7,18 @@ const crypto = require('crypto');
 const PORT = process.env.PORT || 3131;
 const CLICKUP_BASE = 'api.clickup.com';
 const CLICKUP_TOKEN = process.env.CLICKUP_TOKEN || '';
+const SUPABASE_URL = String(process.env.SUPABASE_URL || '').trim();
+const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+const SUPABASE_TABLE = String(process.env.SUPABASE_TABLE || 'kpi_manual_data').trim();
+const SUPABASE_ROW_KEY = String(process.env.SUPABASE_ROW_KEY || 'global').trim();
+const hasSupabaseStorage = !!(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 const FRONTEND_DIST = path.resolve(__dirname, '../frontend/dist');
 const INDEX_HTML = path.join(FRONTEND_DIST, 'index.html');
-const APP_DATA_DIR = path.resolve(process.env.APP_DATA_DIR || path.join(__dirname, '../data'));
+const APP_DATA_DIR = path.resolve(
+  process.env.APP_DATA_DIR ||
+  process.env.RENDER_DISK_ROOT ||
+  path.join(__dirname, '../data')
+);
 const MANUAL_DATA_FILE = path.join(APP_DATA_DIR, 'manual-data.json');
 const SESSION_COOKIE = 'kpi_session';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
@@ -158,23 +167,27 @@ function defaultManualData() {
   return { periods: {} };
 }
 
+function normalizeManualData(parsed) {
+  if (parsed?.periods && typeof parsed.periods === 'object') {
+    return { periods: parsed.periods };
+  }
+  return {
+    periods: {
+      default: {
+        competencies: parsed?.competencies && typeof parsed.competencies === 'object' ? parsed.competencies : {},
+        manualKpis: parsed?.manualKpis && typeof parsed.manualKpis === 'object' ? parsed.manualKpis : {},
+      },
+    },
+  };
+}
+
 function readManualData() {
   try {
     ensureDataDir();
     if (!fs.existsSync(MANUAL_DATA_FILE)) return defaultManualData();
     const raw = fs.readFileSync(MANUAL_DATA_FILE, 'utf8');
     const parsed = JSON.parse(raw || '{}') || {};
-    if (parsed.periods && typeof parsed.periods === 'object') {
-      return { periods: parsed.periods };
-    }
-    return {
-      periods: {
-        default: {
-          competencies: parsed.competencies && typeof parsed.competencies === 'object' ? parsed.competencies : {},
-          manualKpis: parsed.manualKpis && typeof parsed.manualKpis === 'object' ? parsed.manualKpis : {},
-        },
-      },
-    };
+    return normalizeManualData(parsed);
   } catch {
     return defaultManualData();
   }
@@ -188,6 +201,73 @@ function writeManualData(data) {
   };
   fs.writeFileSync(MANUAL_DATA_FILE, JSON.stringify(payload, null, 2));
   return payload;
+}
+
+function supabaseRequest(method, pathName, body, extraHeaders = {}) {
+  return new Promise((resolve, reject) => {
+    if (!hasSupabaseStorage) {
+      reject(new Error('Supabase storage is not configured'));
+      return;
+    }
+    const baseUrl = new URL(SUPABASE_URL);
+    const requestPath = `/rest/v1/${pathName.replace(/^\/+/, '')}`;
+    const options = {
+      hostname: baseUrl.hostname,
+      port: baseUrl.port || (baseUrl.protocol === 'http:' ? 80 : 443),
+      path: `${baseUrl.pathname.replace(/\/$/, '')}${requestPath}`,
+      method,
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        ...extraHeaders,
+      },
+    };
+    const reqClient = baseUrl.protocol === 'http:' ? http : https;
+    const req = reqClient.request(options, (supabaseRes) => {
+      let data = '';
+      supabaseRes.on('data', chunk => { data += chunk; });
+      supabaseRes.on('end', () => {
+        const text = data || '';
+        const ok = supabaseRes.statusCode >= 200 && supabaseRes.statusCode < 300;
+        let parsed = null;
+        if (text) {
+          try { parsed = JSON.parse(text); } catch { parsed = text; }
+        }
+        if (!ok) {
+          reject(new Error(`Supabase ${supabaseRes.statusCode}: ${typeof parsed === 'string' ? parsed : JSON.stringify(parsed)}`));
+          return;
+        }
+        resolve(parsed);
+      });
+    });
+    req.on('error', reject);
+    if (body !== undefined) req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
+async function readManualDataFromSupabase() {
+  const query = `${SUPABASE_TABLE}?key=eq.${encodeURIComponent(SUPABASE_ROW_KEY)}&select=periods,updated_at&limit=1`;
+  const rows = await supabaseRequest('GET', query);
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  return normalizeManualData({ periods: rows[0]?.periods || {} });
+}
+
+async function writeManualDataToSupabase(data) {
+  const payload = {
+    key: SUPABASE_ROW_KEY,
+    periods: data?.periods && typeof data.periods === 'object' ? data.periods : {},
+    updated_at: new Date().toISOString(),
+  };
+  await supabaseRequest(
+    'POST',
+    `${SUPABASE_TABLE}?on_conflict=key`,
+    [payload],
+    { Prefer: 'resolution=merge-duplicates,return=minimal' }
+  );
+  return { periods: payload.periods, updatedAt: payload.updated_at };
 }
 
 function readJsonBody(req) {
@@ -227,7 +307,7 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.url === '/health') {
-    sendJson(res, 200, { status: 'ok' });
+    sendJson(res, 200, { status: 'ok', manualStorage: hasSupabaseStorage ? 'supabase' : 'file' });
     return;
   }
 
@@ -300,6 +380,12 @@ const server = http.createServer((req, res) => {
         const user = requireAuth(req, res);
         if (!user) return;
       }
+      if (hasSupabaseStorage) {
+        readManualDataFromSupabase()
+          .then(data => sendJson(res, 200, data || defaultManualData()))
+          .catch(error => sendJson(res, 500, { error: error.message }))
+        return;
+      }
       sendJson(res, 200, readManualData());
       return;
     }
@@ -312,6 +398,9 @@ const server = http.createServer((req, res) => {
       }
       readJsonBody(req)
         .then(body => {
+          if (hasSupabaseStorage) {
+            return writeManualDataToSupabase(body).then(saved => sendJson(res, 200, saved));
+          }
           const saved = writeManualData(body);
           sendJson(res, 200, saved);
         })
@@ -383,4 +472,6 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`KPI app server running on http://localhost:${PORT}`);
   console.log(`Token: ${CLICKUP_TOKEN ? 'set via env' : 'expecting X-ClickUp-Token header per request'}`);
+  console.log(`Manual storage backend: ${hasSupabaseStorage ? 'supabase' : 'file'}`);
+  console.log(`Manual data path: ${MANUAL_DATA_FILE}`);
 });

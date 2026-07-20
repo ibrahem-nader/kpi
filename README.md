@@ -88,8 +88,31 @@ Recommended setup:
 1. Push this repo to GitHub.
 2. In Render, create a new Blueprint and select this repo.
 3. Render will read `render.yaml`.
-4. Set `CLICKUP_TOKEN` in the Render service environment.
+4. Set `CLICKUP_TOKEN`, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY` in the Render service environment.
 5. Deploy.
+
+Persistence for ratings / manual scores:
+- Production should use Supabase for shared ratings storage.
+- The proxy reads and writes manual ratings through Supabase when `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are set.
+- If those env vars are missing, the app falls back to a local `manual-data.json` file, which is fine locally but not reliable on Render free.
+
+Create this table once in Supabase SQL Editor:
+
+```sql
+create table if not exists public.kpi_manual_data (
+  key text primary key,
+  periods jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+```
+
+Recommended RLS setup for this table:
+
+```sql
+alter table public.kpi_manual_data enable row level security;
+```
+
+Because the app uses the server-side `SUPABASE_SERVICE_ROLE_KEY`, no public client policy is required for this table.
 
 Health check:
 - `/health`
