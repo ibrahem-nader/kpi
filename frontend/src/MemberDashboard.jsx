@@ -854,7 +854,21 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
   }
 
   async function persistManualData() {
-    if (!sharedDataReady || !sharedDataAvailable || !manualDataWritable) return
+    if (!manualDataWritable) {
+      setSaveState('error')
+      setSaveError('You do not have permission to save manual data')
+      return
+    }
+    if (!sharedDataReady) {
+      setSaveState('error')
+      setSaveError('Storage is still loading, try again in a moment')
+      return
+    }
+    if (!sharedDataAvailable) {
+      setSaveState('error')
+      setSaveError('Shared storage is unavailable')
+      return
+    }
     setSaveState('saving')
     setSaveError('')
     try {
@@ -986,9 +1000,20 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
           {manualDataWritable && (
             <button
               onClick={persistManualData}
-              style={{ background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius-sm)', color: '#fff', fontSize: 12, padding: '6px 10px', fontFamily: 'var(--font)', cursor: 'pointer' }}
+              disabled={!sharedDataReady || saveState === 'saving'}
+              style={{
+                background: 'var(--accent)',
+                border: 'none',
+                borderRadius: 'var(--radius-sm)',
+                color: '#fff',
+                fontSize: 12,
+                padding: '6px 10px',
+                fontFamily: 'var(--font)',
+                cursor: (!sharedDataReady || saveState === 'saving') ? 'not-allowed' : 'pointer',
+                opacity: (!sharedDataReady || saveState === 'saving') ? 0.6 : 1,
+              }}
             >
-              Save now
+              {saveState === 'saving' ? 'Saving…' : 'Save now'}
             </button>
           )}
           <button
