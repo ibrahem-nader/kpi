@@ -164,12 +164,12 @@ function ensureDataDir() {
 }
 
 function defaultManualData() {
-  return { periods: {} };
+  return { periods: {}, updatedAt: null };
 }
 
 function normalizeManualData(parsed) {
   if (parsed?.periods && typeof parsed.periods === 'object') {
-    return { periods: parsed.periods };
+    return { periods: parsed.periods, updatedAt: parsed.updatedAt || parsed.updated_at || null };
   }
   return {
     periods: {
@@ -178,6 +178,7 @@ function normalizeManualData(parsed) {
         manualKpis: parsed?.manualKpis && typeof parsed.manualKpis === 'object' ? parsed.manualKpis : {},
       },
     },
+    updatedAt: parsed?.updatedAt || parsed?.updated_at || null,
   };
 }
 
@@ -252,7 +253,7 @@ async function readManualDataFromSupabase() {
   const query = `${SUPABASE_TABLE}?key=eq.${encodeURIComponent(SUPABASE_ROW_KEY)}&select=periods,updated_at&limit=1`;
   const rows = await supabaseRequest('GET', query);
   if (!Array.isArray(rows) || rows.length === 0) return null;
-  return normalizeManualData({ periods: rows[0]?.periods || {} });
+  return normalizeManualData({ periods: rows[0]?.periods || {}, updated_at: rows[0]?.updated_at || null });
 }
 
 async function writeManualDataToSupabase(data) {
@@ -295,10 +296,23 @@ function readJsonBody(req) {
   });
 }
 
+async function loadManualDataWithMeta() {
+  if (hasSupabaseStorage) {
+    const data = await readManualDataFromSupabase();
+    return data || defaultManualData();
+  }
+  return readManualData();
+}
+
+async function saveManualDataWithMeta(body) {
+  if (hasSupabaseStorage) return writeManualDataToSupabase(body);
+  return writeManualData(body);
+}
+
 const server = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-ClickUp-Token');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-ClickUp-Token, X-KPI-Personal-Access');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -308,6 +322,29 @@ const server = http.createServer((req, res) => {
 
   if (req.url === '/health') {
     sendJson(res, 200, { status: 'ok', manualStorage: hasSupabaseStorage ? 'supabase' : 'file' });
+    return;
+  }
+
+  if (req.url === '/api/manual-data/status') {
+    if (authEnabled && !isPersonalAccessRequest(req)) {
+      const user = requireAuth(req, res);
+      if (!user) return;
+    }
+    loadManualDataWithMeta()
+      .then(data => {
+        sendJson(res, 200, {
+          backend: hasSupabaseStorage ? 'supabase' : 'file',
+          updatedAt: data?.updatedAt || null,
+          path: hasSupabaseStorage ? null : MANUAL_DATA_FILE,
+        });
+      })
+      .catch(error => {
+        sendJson(res, 500, {
+          backend: hasSupabaseStorage ? 'supabase' : 'file',
+          updatedAt: null,
+          error: error.message,
+        });
+      });
     return;
   }
 
@@ -380,13 +417,9 @@ const server = http.createServer((req, res) => {
         const user = requireAuth(req, res);
         if (!user) return;
       }
-      if (hasSupabaseStorage) {
-        readManualDataFromSupabase()
-          .then(data => sendJson(res, 200, data || defaultManualData()))
-          .catch(error => sendJson(res, 500, { error: error.message }))
-        return;
-      }
-      sendJson(res, 200, readManualData());
+      loadManualDataWithMeta()
+        .then(data => sendJson(res, 200, data))
+        .catch(error => sendJson(res, 500, { error: error.message }))
       return;
     }
     if (req.method === 'PUT') {
@@ -398,11 +431,7 @@ const server = http.createServer((req, res) => {
       }
       readJsonBody(req)
         .then(body => {
-          if (hasSupabaseStorage) {
-            return writeManualDataToSupabase(body).then(saved => sendJson(res, 200, saved));
-          }
-          const saved = writeManualData(body);
-          sendJson(res, 200, saved);
+          return saveManualDataWithMeta(body).then(saved => sendJson(res, 200, saved));
         })
         .catch(error => {
           sendJson(res, 400, { error: error.message });

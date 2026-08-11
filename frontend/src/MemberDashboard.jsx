@@ -170,6 +170,14 @@ async function fetchSharedManualData() {
   return res.json()
 }
 
+async function fetchSharedManualDataStatus() {
+  const res = await fetch('/api/manual-data/status', {
+    headers: PERSONAL_ACCESS_ENABLED ? { 'X-KPI-Personal-Access': '1' } : undefined,
+  })
+  if (!res.ok) throw new Error(`Failed to load shared manual data status: ${res.status}`)
+  return res.json()
+}
+
 async function saveSharedManualData(periods) {
   const res = await fetch('/api/manual-data', {
     method: 'PUT',
@@ -192,6 +200,13 @@ function buildPersonalPageUrl(memberId) {
   const url = new URL(window.location.href)
   url.searchParams.set('memberId', String(memberId))
   return url.toString()
+}
+
+function formatSavedAt(value) {
+  if (!value) return 'Never'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Unknown'
+  return date.toLocaleString()
 }
 
 function ManualCompetencyEditor({ member, values = {}, onLevelChange, onTextChange, onClear, summaryScore, manualScore, disciplineScore, readOnly = false }) {
@@ -747,6 +762,10 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
   const competencyKeys = React.useMemo(() => new Set(MANUAL_COMPETENCIES.map(item => item.key)), [])
   const [sharedDataReady, setSharedDataReady] = React.useState(false)
   const [sharedDataAvailable, setSharedDataAvailable] = React.useState(false)
+  const [storageBackend, setStorageBackend] = React.useState('unknown')
+  const [lastSavedAt, setLastSavedAt] = React.useState(null)
+  const [saveState, setSaveState] = React.useState(manualDataWritable ? 'idle' : 'readonly')
+  const [saveError, setSaveError] = React.useState('')
   const manualCompetencyMap = manualCompetencyByPeriod[periodKey] || {}
   const manualKpiMap = manualKpiByPeriod[periodKey] || {}
   const memberCatalog = React.useMemo(() => {
@@ -780,8 +799,8 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
 
   React.useEffect(() => {
     let cancelled = false
-    fetchSharedManualData()
-      .then(data => {
+    Promise.all([fetchSharedManualData(), fetchSharedManualDataStatus().catch(() => null)])
+      .then(([data, status]) => {
         if (cancelled) return
         const remotePeriods = data?.periods && typeof data.periods === 'object' ? data.periods : {}
         const competencyPeriods = Object.fromEntries(
@@ -798,6 +817,8 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
           setManualKpiByPeriod(kpiPeriods)
           saveManualKpiScores(kpiPeriods[periodKey] || kpiPeriods.default || {})
         }
+        setStorageBackend(status?.backend || 'unknown')
+        setLastSavedAt(data?.updatedAt || status?.updatedAt || null)
         setSharedDataAvailable(true)
         setSharedDataReady(true)
       })
@@ -805,6 +826,7 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
         if (cancelled) return
         setSharedDataAvailable(false)
         setSharedDataReady(true)
+        setStorageBackend('unavailable')
       })
     return () => {
       cancelled = true
@@ -819,23 +841,43 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
     saveManualKpiScores(manualKpiMap)
   }, [manualKpiMap])
 
+  function buildPeriodsPayload() {
+    const periods = {}
+    const keys = new Set([...Object.keys(manualCompetencyByPeriod), ...Object.keys(manualKpiByPeriod)])
+    keys.forEach(key => {
+      periods[key] = {
+        competencies: manualCompetencyByPeriod[key] || {},
+        manualKpis: manualKpiByPeriod[key] || {},
+      }
+    })
+    return periods
+  }
+
+  async function persistManualData() {
+    if (!sharedDataReady || !sharedDataAvailable || !manualDataWritable) return
+    setSaveState('saving')
+    setSaveError('')
+    try {
+      const saved = await saveSharedManualData(buildPeriodsPayload())
+      setLastSavedAt(saved?.updatedAt || new Date().toISOString())
+      setSaveState('saved')
+    } catch (error) {
+      setSaveState('error')
+      setSaveError(error.message || 'Save failed')
+    }
+  }
+
   React.useEffect(() => {
     if (!sharedDataReady || !sharedDataAvailable || !manualDataWritable) return
     const timeoutId = window.setTimeout(() => {
-      const periods = {}
-      const keys = new Set([...Object.keys(manualCompetencyByPeriod), ...Object.keys(manualKpiByPeriod)])
-      keys.forEach(key => {
-        periods[key] = {
-          competencies: manualCompetencyByPeriod[key] || {},
-          manualKpis: manualKpiByPeriod[key] || {},
-        }
-      })
-      saveSharedManualData(periods).catch(() => {})
+      persistManualData()
     }, 400)
     return () => window.clearTimeout(timeoutId)
   }, [manualCompetencyByPeriod, manualKpiByPeriod, sharedDataReady, sharedDataAvailable, manualDataWritable])
 
   function updateCompetency(memberId, competencyKey, value) {
+    setSaveState('idle')
+    setSaveError('')
     setManualCompetencyByPeriod(prev => {
       const normalizedValue = competencyKeys.has(competencyKey)
         ? (value ? Number(value) : null)
@@ -856,6 +898,8 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
   }
 
   function clearMemberCompetencies(memberId) {
+    setSaveState('idle')
+    setSaveError('')
     setManualCompetencyByPeriod(prev => {
       const currentPeriod = { ...(prev[periodKey] || {}) }
       delete currentPeriod[memberId]
@@ -865,6 +909,8 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
   }
 
   function updateManualKpi(memberId, key, value) {
+    setSaveState('idle')
+    setSaveError('')
     setManualKpiByPeriod(prev => {
       const currentPeriod = prev[periodKey] || {}
       const current = currentPeriod[memberId] || {}
@@ -926,6 +972,25 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {!personalOnly && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 'auto', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, color: 'var(--text2)' }}>
+              Storage: <span style={{ color: 'var(--text)', fontFamily: 'var(--mono)' }}>{storageBackend}</span>
+            </span>
+            <span style={{ fontSize: 12, color: saveState === 'error' ? '#f0524f' : 'var(--text2)' }}>
+              {saveState === 'saving' && 'Saving…'}
+              {saveState === 'saved' && `Saved ${formatSavedAt(lastSavedAt)}`}
+              {saveState === 'error' && `Save failed: ${saveError}`}
+              {(saveState === 'idle' || saveState === 'readonly') && `Last saved: ${formatSavedAt(lastSavedAt)}`}
+            </span>
+          </div>
+          {manualDataWritable && (
+            <button
+              onClick={persistManualData}
+              style={{ background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius-sm)', color: '#fff', fontSize: 12, padding: '6px 10px', fontFamily: 'var(--font)', cursor: 'pointer' }}
+            >
+              Save now
+            </button>
+          )}
           <button
             onClick={exportCompetenciesCsv}
             style={{ background: 'var(--bg3)', border: '0.5px solid var(--border2)', borderRadius: 'var(--radius-sm)', color: 'var(--text)', fontSize: 12, padding: '6px 10px', fontFamily: 'var(--font)', cursor: 'pointer' }}
