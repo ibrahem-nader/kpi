@@ -768,34 +768,16 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
   const [saveError, setSaveError] = React.useState('')
   const manualCompetencyMap = manualCompetencyByPeriod[periodKey] || {}
   const manualKpiMap = manualKpiByPeriod[periodKey] || {}
-  const memberCatalog = React.useMemo(() => {
-    const map = new Map()
-    const addMember = (member) => {
-      if (!member?.id) return
-      const key = String(member.id)
-      const current = map.get(key) || {}
-      map.set(key, {
-        ...current,
+  const memberCatalog = React.useMemo(() => (
+    members
+      .filter(member => member?.id)
+      .map(member => ({
         ...member,
         id: member.id,
-        username: member.username || current.username || member.email || current.email || `Member ${member.id}`,
-        email: member.email || current.email || '',
-      })
-    }
-
-    members.forEach(addMember)
-    ;[...tasks, ...bugTasks].forEach(task => {
-      ;(task.assignees || []).forEach(assignee => {
-        addMember({
-          id: assignee.id,
-          username: assignee.username || assignee.email || assignee.initials || assignee.name,
-          email: assignee.email || '',
-        })
-      })
-    })
-
-    return Array.from(map.values())
-  }, [members, tasks, bugTasks])
+        username: member.username || member.email || `Member ${member.id}`,
+        email: member.email || '',
+      }))
+  ), [members])
 
   React.useEffect(() => {
     let cancelled = false
