@@ -723,9 +723,9 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
         <div>
           <SectionTitle>Time</SectionTitle>
           <StatRow label="Estimated" value={`${kpi.estimatedHours}h`} mono />
-          <StatRow label="Tracked (this period, all tasks)" value={`${kpi.trackedHours}h`} mono />
+          <StatRow label="Tracked" value={`${kpi.trackedHours}h`} mono />
           {kpi.carriedOverTrackedHours > 0 && (
-            <StatRow label="— of which, carried-over tasks" value={`${kpi.carriedOverTrackedHours}h`} mono />
+            <StatRow label="— of which, carried-over tasks (this period only)" value={`${kpi.carriedOverTrackedHours}h`} mono />
           )}
           <StatRow label="Parent est / tracked" value={`${kpi.parentEstimatedHours}h / ${kpi.parentTrackedHours}h`} mono />
           <StatRow label="Subtask est / tracked" value={`${kpi.subtaskEstimatedHours}h / ${kpi.subtaskTrackedHours}h`} mono />

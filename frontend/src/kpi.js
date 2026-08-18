@@ -277,12 +277,25 @@ export function buildTrackedMsMaps(timeEntries = []) {
   return { byTask, byUser }
 }
 
-function summarizeEstimateTracked(tasks, taskLookup = {}, trackedMsByTask = null) {
+// A task's tracked time: for tasks that natively belong to this period (i.e.
+// created in it), use the task's full lifetime time_spent — even time logged
+// after the task (or the period) closed, since the estimate was made once
+// for the whole task and shouldn't be split by a calendar boundary. Carried-
+// over tasks (created in an earlier period, still worked on now) use only
+// the entries logged within this period instead — their lifetime total
+// already belongs to whichever period they were created in, so using it here
+// too would double-count the same hours across periods.
+function trackedMsForTask(task, trackedMsByTask, carriedOverTaskIds) {
+  if (carriedOverTaskIds?.has(task.id)) return trackedMsByTask ? (trackedMsByTask.get(task.id) || 0) : 0
+  return task.time_spent || 0
+}
+
+function summarizeEstimateTracked(tasks, taskLookup = {}, trackedMsByTask = null, carriedOverTaskIds = null) {
   const parentTasks = tasks.filter(t => !t.parent)
   const subTasks = tasks.filter(t => t.parent)
   const taskIdsInScope = new Set(tasks.map(t => t.id))
   const sumEst = list => list.reduce((s, t) => s + getEffectiveEstimate(t, taskLookup, taskIdsInScope), 0)
-  const trackedMsFor = t => trackedMsByTask ? (trackedMsByTask.get(t.id) || 0) : (t.time_spent || 0)
+  const trackedMsFor = t => trackedMsForTask(t, trackedMsByTask, carriedOverTaskIds)
   const sumTracked = list => list.reduce((s, t) => s + trackedMsFor(t), 0)
 
   return {
@@ -300,12 +313,14 @@ function summarizeEstimateTracked(tasks, taskLookup = {}, trackedMsByTask = null
 export function buildEstimateAccuracyBreakdown(memberId, tasks, bugTasks = [], trackedMsByTask = null, extraTasks = []) {
   const taskLookup = buildTaskLookup(tasks, bugTasks, extraTasks)
   const myTasksBase = tasks.filter(t => t.assignees?.some(a => a.id == memberId))
-  const myTasks = [...myTasksBase, ...myExtraTasksFor(memberId, myTasksBase, extraTasks)]
+  const myExtra = myExtraTasksFor(memberId, myTasksBase, extraTasks)
+  const myTasks = [...myTasksBase, ...myExtra]
+  const carriedOverTaskIds = new Set(myExtra.map(t => t.id))
   const taskIdsInScope = new Set(myTasks.map(t => t.id))
 
   return myTasks.map(task => {
     const ownEstimateMs = parseInt(task?.time_estimate) || 0
-    const trackedMs = trackedMsByTask ? (trackedMsByTask.get(task.id) || 0) : (task.time_spent || 0)
+    const trackedMs = trackedMsForTask(task, trackedMsByTask, carriedOverTaskIds)
     const parentId = getParentId(task)
     const parentEstimateMs = parentId ? (parseInt(taskLookup[parentId]?.time_estimate) || 0) : 0
     const usesParentEstimate = ownEstimateMs === 0 && parentId && !taskIdsInScope.has(parentId) && parentEstimateMs > 0
@@ -343,7 +358,9 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
   // against this period — used ONLY for the estimate/tracked panel, so it
   // reflects real period activity without changing delivery/bug/on-time
   // metrics (which still use the narrower, date_created-scoped myTasks).
-  const myTimeTasks = [...myTasks, ...myExtraTasksFor(memberId, myTasks, extraTasks)]
+  const myExtra = myExtraTasksFor(memberId, myTasks, extraTasks)
+  const myTimeTasks = [...myTasks, ...myExtra]
+  const carriedOverTaskIds = new Set(myExtra.map(t => t.id))
   const myBugs = bugTasks.filter(t => t.assignees?.some(a => a.id == memberId))
   const myClassifiedBugs = myTasks.filter(t => classifyTaskType(t) === 'bug')
   const myFeatures = myTasks.filter(t => classifyTaskType(t) === 'feature')
@@ -351,17 +368,14 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
   myBugs.forEach(task => combinedBugTaskMap.set(task.id, task))
   myClassifiedBugs.forEach(task => combinedBugTaskMap.set(task.id, task))
   const combinedBugTasks = Array.from(combinedBugTaskMap.values())
-  const estimateTracked = summarizeEstimateTracked(myTimeTasks, taskLookup, trackedMsByTask)
+  // Tracked time: full lifetime time_spent for tasks created in this period
+  // (an estimate covers the whole task, not just the days that fall inside
+  // the period), plus period-scoped entries for carried-over tasks (whose
+  // lifetime total already belongs to the period they were created in).
+  const estimateTracked = summarizeEstimateTracked(myTimeTasks, taskLookup, trackedMsByTask, carriedOverTaskIds)
   const totalEst = estimateTracked.allEstimatedMs
-  // scopedTrackedMs: tracked time on tasks that made it into this period's task list.
-  // periodTrackedMs: this person's ENTIRE tracked time in the period, from ClickUp's
-  // time-entries log — includes work logged against tasks created before the period
-  // (e.g. carried-over work) that the task list filter excludes. That gap is exactly
-  // what made "tracked hours" look implausibly low for people continuing older tasks.
-  const scopedTrackedMs = estimateTracked.allTrackedMs
-  const periodTrackedMs = trackedMsByUser ? (trackedMsByUser.get(String(memberId)) || 0) : scopedTrackedMs
-  const carriedOverTrackedMs = Math.max(0, periodTrackedMs - scopedTrackedMs)
-  const totalTracked = periodTrackedMs
+  const totalTracked = estimateTracked.allTrackedMs
+  const carriedOverTrackedMs = myExtra.reduce((s, t) => s + trackedMsForTask(t, trackedMsByTask, carriedOverTaskIds), 0)
 
   const doneTasks = myTasks.filter(t => isDone(t))
   const activeTasks = myTasks.filter(t => isActive(t))
@@ -375,10 +389,8 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
   const now = Date.now()
 
   // Estimate accuracy: how close tracked time was to estimated time.
-  // Compared against scopedTrackedMs (not the period-wide total) so the ratio
-  // stays a like-for-like comparison against this period's task estimates.
   const estimateAccuracyPct = totalEst > 0
-    ? Math.min(100, Math.round((scopedTrackedMs / totalEst) * 100))
+    ? Math.min(100, Math.round((totalTracked / totalEst) * 100))
     : null
   // Completion rate across the selected scope: done tasks / all scoped tasks
   const sprintCompletionPct = myTasks.length > 0 ? Math.round((doneTasks.length / myTasks.length) * 100) : null
@@ -614,7 +626,6 @@ export function calcMemberKPIs(memberId, tasks, bugTasks, cycleTimeMap = {}, cyc
     doneCombinedBugTasks: doneCombinedBugTasks.length,
     estimatedHours: msToHours(totalEst),
     trackedHours: msToHours(totalTracked),
-    scopedTrackedHours: msToHours(scopedTrackedMs),
     carriedOverTrackedHours: msToHours(carriedOverTrackedMs),
     parentEstimatedHours: msToHours(estimateTracked.parentEstimatedMs),
     parentTrackedHours: msToHours(estimateTracked.parentTrackedMs),
@@ -675,16 +686,14 @@ export function calcSprintStats(tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap
   // timeTasks: tasks plus carried-over tasks referenced by time entries but
   // excluded by the date_created scope — used ONLY for the estimated/tracked
   // totals, so headline delivery/bug/on-time metrics stay on the original set.
-  const timeTasks = [...tasks, ...extraTasks.filter(t => !knownTaskIds.has(t.id))]
-  const estimateTracked = summarizeEstimateTracked(timeTasks, taskLookup, trackedMsByTask)
+  const carriedOver = extraTasks.filter(t => !knownTaskIds.has(t.id))
+  const timeTasks = [...tasks, ...carriedOver]
+  const carriedOverTaskIds = new Set(carriedOver.map(t => t.id))
+  // Tracked time: full lifetime time_spent for tasks created in this period,
+  // plus period-scoped entries for carried-over tasks (see calcMemberKPIs).
+  const estimateTracked = summarizeEstimateTracked(timeTasks, taskLookup, trackedMsByTask, carriedOverTaskIds)
   const totalEst = estimateTracked.allEstimatedMs
-  const scopedTrackedMs = estimateTracked.allTrackedMs
-  // Team-wide tracked time in the period, from ClickUp's time-entries log — captures
-  // work logged against tasks that fall outside this scope's task list too (see the
-  // matching note in calcMemberKPIs).
-  const totalTracked = trackedMsByUser
-    ? Array.from(trackedMsByUser.values()).reduce((sum, ms) => sum + ms, 0)
-    : scopedTrackedMs
+  const totalTracked = estimateTracked.allTrackedMs
   const doneTasks = tasks.filter(isDone)
   const activeTasks = tasks.filter(isActive)
   const notStartedTasks = tasks.filter(isNotStarted)
@@ -772,46 +781,33 @@ export function calcSprintStats(tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap
   const testingBounceBackPct = qualityMeasuredTasks > 0 ? Math.round((testingBounceBackTasks / qualityMeasuredTasks) * 100) : null
   const weeklyTrendData = buildWeeklyTrendData(tasks, bugTasks, cycleMetaMap)
 
-  // Per-assignee breakdown
+  // Per-assignee breakdown. Tracked time follows the same rule as
+  // calcMemberKPIs: full lifetime time_spent for tasks created in this
+  // period (native), period-scoped entries for carried-over ones.
   const assigneeMap = {}
+  const ensureAssignee = a => {
+    if (!assigneeMap[a.id])
+      assigneeMap[a.id] = { id: a.id, name: a.username || a.email, tasks: [], done: 0, active: 0, notStarted: 0, est: 0, tracked: 0 }
+    return assigneeMap[a.id]
+  }
   tasks.forEach(t => {
     ;(t.assignees || []).forEach(a => {
-      if (!assigneeMap[a.id])
-        assigneeMap[a.id] = { id: a.id, name: a.username || a.email, tasks: [], done: 0, active: 0, notStarted: 0, est: 0, tracked: 0 }
-      assigneeMap[a.id].tasks.push(t)
-      if (isDone(t)) assigneeMap[a.id].done++
-      else if (isActive(t)) assigneeMap[a.id].active++
-      else if (isNotStarted(t)) assigneeMap[a.id].notStarted++
-      assigneeMap[a.id].est += parseInt(t.time_estimate) || 0
-      assigneeMap[a.id].tracked += trackedMsByTask ? (trackedMsByTask.get(t.id) || 0) : (t.time_spent || 0)
+      const entry = ensureAssignee(a)
+      entry.tasks.push(t)
+      if (isDone(t)) entry.done++
+      else if (isActive(t)) entry.active++
+      else if (isNotStarted(t)) entry.notStarted++
+      entry.est += parseInt(t.time_estimate) || 0
+      entry.tracked += t.time_spent || 0
     })
   })
-  if (trackedMsByUser) {
-    Object.values(assigneeMap).forEach(entry => {
-      const periodMs = trackedMsByUser.get(String(entry.id))
-      if (periodMs !== undefined) entry.tracked = periodMs
+  carriedOver.forEach(t => {
+    ;(t.assignees || []).forEach(a => {
+      const entry = ensureAssignee(a)
+      entry.est += parseInt(t.time_estimate) || 0
+      entry.tracked += trackedMsByTask ? (trackedMsByTask.get(t.id) || 0) : 0
     })
-  }
-  // Add estimated hours from carried-over tasks per assignee (tracked hours
-  // above already reflect period activity via trackedMsByUser; this keeps
-  // "est" consistent with the same real task set instead of undercounting).
-  if (extraTasks.length) {
-    const knownAssigneeTaskIds = {}
-    tasks.forEach(t => {
-      ;(t.assignees || []).forEach(a => {
-        if (!knownAssigneeTaskIds[a.id]) knownAssigneeTaskIds[a.id] = new Set()
-        knownAssigneeTaskIds[a.id].add(t.id)
-      })
-    })
-    extraTasks.forEach(t => {
-      ;(t.assignees || []).forEach(a => {
-        if (knownAssigneeTaskIds[a.id]?.has(t.id)) return
-        if (!assigneeMap[a.id])
-          assigneeMap[a.id] = { id: a.id, name: a.username || a.email, tasks: [], done: 0, active: 0, notStarted: 0, est: 0, tracked: 0 }
-        assigneeMap[a.id].est += parseInt(t.time_estimate) || 0
-      })
-    })
-  }
+  })
 
   // Priority breakdown
   const byPriority = { urgent: 0, high: 0, normal: 0, low: 0, none: 0 }
@@ -856,7 +852,7 @@ export function calcSprintStats(tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap
     subtaskTrackedHours: msToHours(estimateTracked.subtaskTrackedMs),
     parentTaskCount: estimateTracked.parentTaskCount,
     subtaskCount: estimateTracked.subtaskCount,
-    estimateAccuracyPct: totalEst > 0 ? Math.min(100, Math.round((scopedTrackedMs / totalEst) * 100)) : null,
+    estimateAccuracyPct: totalEst > 0 ? Math.min(100, Math.round((totalTracked / totalEst) * 100)) : null,
     sprintCompletionPct: tasks.length > 0 ? Math.round((doneTasks.length / tasks.length) * 100) : 0,
     onTimePct: dueDatedDoneTasks.length > 0 ? Math.round((onTimeDoneTasks.length / dueDatedDoneTasks.length) * 100) : null,
     dueDatedDoneTasks: dueDatedDoneTasks.length,
