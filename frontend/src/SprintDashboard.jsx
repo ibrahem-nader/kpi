@@ -4,7 +4,7 @@ import {
   PieChart, Pie, Cell, Legend, LabelList, LineChart, Line, CartesianGrid,
 } from 'recharts'
 import { Card, MetricCard, SectionTitle, StatRow, ProgressBar, Avatar } from './components.jsx'
-import { calcSprintStats, msToHours, getWorkTypeHelp } from './kpi.js'
+import { buildTrackedMsMaps, calcSprintStats, msToHours, getWorkTypeHelp } from './kpi.js'
 
 const tooltipStyle = {
   background: 'var(--bg3)', border: '0.5px solid var(--border2)',
@@ -52,9 +52,16 @@ function PipelineBar({ pipeline }) {
   )
 }
 
-export function SprintDashboard({ tasks, bugTasks, sprintName, sourceKind, cycleTimeMap = {}, cycleMetaMap = {}, cycleTimeNote = '' }) {
+export function SprintDashboard({ tasks, bugTasks, sprintName, sourceKind, cycleTimeMap = {}, cycleMetaMap = {}, cycleTimeNote = '', timeEntries = [], timeEntriesAvailable = false, carriedOverTasks = [] }) {
   const [showCycleDetails, setShowCycleDetails] = useState(false)
-  const stats = useMemo(() => calcSprintStats(tasks, bugTasks, cycleTimeMap, cycleMetaMap), [tasks, bugTasks, cycleTimeMap, cycleMetaMap])
+  const { byTask: trackedMsByTask, byUser: trackedMsByUser } = useMemo(
+    () => timeEntriesAvailable ? buildTrackedMsMaps(timeEntries) : { byTask: null, byUser: null },
+    [timeEntries, timeEntriesAvailable]
+  )
+  const stats = useMemo(
+    () => calcSprintStats(tasks, bugTasks, cycleTimeMap, cycleMetaMap, trackedMsByTask, trackedMsByUser, carriedOverTasks),
+    [tasks, bugTasks, cycleTimeMap, cycleMetaMap, trackedMsByTask, trackedMsByUser, carriedOverTasks]
+  )
   const measuredCount = Object.keys(cycleTimeMap).length
   const isSingleSprintSource = sourceKind === 'sprint'
   const metricGridStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10 }

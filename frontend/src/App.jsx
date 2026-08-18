@@ -8,7 +8,7 @@ import { ConfigScreen, loadConfig } from './ConfigScreen.jsx'
 import { SprintDashboard } from './SprintDashboard.jsx'
 import { MemberDashboard } from './MemberDashboard.jsx'
 import { Spinner, ErrorBox } from './components.jsx'
-import { getMembers, getSprintLists, getListDetails, getAllTasks, getAllTasksFromLists, fetchCycleTimes } from './api.js'
+import { getMembers, getSprintLists, getListDetails, getAllTasks, getAllTasksFromLists, getTeamTimeEntries, getTasksByIds, fetchCycleTimes } from './api.js'
 
 const KPI_PERIOD_START = '2026-01-01'
 const KPI_PERIOD_END = '2026-06-30'
@@ -105,6 +105,9 @@ export default function App() {
   const [extraSources, setExtraSources]     = useState([])
   const [tasks, setTasks]                   = useState([])
   const [bugTasks, setBugTasks]             = useState([])
+  const [timeEntries, setTimeEntries]       = useState([])
+  const [timeEntriesAvailable, setTimeEntriesAvailable] = useState(false)
+  const [carriedOverTasks, setCarriedOverTasks] = useState([])
   const [cycleTimeMap, setCycleTimeMap]     = useState({})
   const [cycleMetaMap, setCycleMetaMap]     = useState({})
   const [cycleTimeNote, setCycleTimeNote]   = useState('')
@@ -192,7 +195,7 @@ export default function App() {
     },
   }), [themeMode])
 
-  const loadTasks = useCallback(async (cfg, sprintList, from, to) => {
+  const loadTasks = useCallback(async (cfg, sprintList, from, to, memberList) => {
     setLoading(true); setError(null)
     try {
       const list = sprintList || []
@@ -210,6 +213,57 @@ export default function App() {
       setBugTasks(bugs)
       setCycleTimeNote('')
       setCycleMetaMap({})
+
+      setLoadingLabel('Loading tracked time…')
+      let entries = []
+      try {
+        const memberIds = (memberList || []).map(m => m.id).filter(Boolean)
+        entries = await getTeamTimeEntries(cfg.teamId, cfg.token, { dateFrom: from, dateTo: to, memberIds })
+        setTimeEntries(entries)
+        setTimeEntriesAvailable(true)
+      } catch (e) {
+        // Fall back to task-level time_spent (the old, less accurate behavior)
+        // rather than showing hard zeroes if the time-entries call fails.
+        console.warn('getTeamTimeEntries failed:', e.message)
+        setTimeEntries([])
+        setTimeEntriesAvailable(false)
+      }
+
+      // Tasks referenced by time entries but excluded by the date_created scope
+      // above (carried-over work) have no time_estimate loaded yet — fetch them
+      // individually so "estimated hours" reflects the same real task set as
+      // "tracked hours" instead of staying scoped to just this period's new tasks.
+      // There's no bulk-by-id endpoint and ClickUp's rate limit can't absorb
+      // fetching hundreds of these per load, so we cap it and prioritize the
+      // tasks with the most tracked time — those move the estimate number the
+      // most, and the rest simply stay excluded (same as before this feature).
+      const knownTaskIds = new Set([...sprintTasks, ...bugs].map(t => t.id))
+      const msByTaskId = new Map()
+      entries.forEach(e => {
+        const taskId = e.task?.id
+        if (!taskId || knownTaskIds.has(taskId)) return
+        const ms = Math.max(0, parseInt(e.duration) || 0)
+        msByTaskId.set(taskId, (msByTaskId.get(taskId) || 0) + ms)
+      })
+      const MAX_CARRIED_OVER_LOOKUPS = 150
+      const missingTaskIds = [...msByTaskId.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, MAX_CARRIED_OVER_LOOKUPS)
+        .map(([id]) => id)
+      if (missingTaskIds.length > 0) {
+        setLoadingLabel(`Loading details for ${missingTaskIds.length} carried-over tasks…`)
+        try {
+          const extra = await getTasksByIds(missingTaskIds, cfg.token, (done, total) => {
+            setLoadingLabel(`Loading carried-over task details: ${done}/${total}…`)
+          })
+          setCarriedOverTasks(extra)
+        } catch (e) {
+          console.warn('getTasksByIds failed:', e.message)
+          setCarriedOverTasks([])
+        }
+      } else {
+        setCarriedOverTasks([])
+      }
 
       // Fetch cycle times for all parent tasks that passed through awaiting testing
       // (in-progress → awaiting testing = dev cycle time)
@@ -273,7 +327,7 @@ export default function App() {
       setAdvancedDates(false)
       setDateFrom(preset.from)
       setDateTo(preset.to)
-      await loadTasks(cfg, sprintList, preset.from, preset.to)
+      await loadTasks(cfg, sprintList, preset.from, preset.to, m)
     } catch (e) {
       setError(e.message)
       setLoading(false); setLoadingLabel('')
@@ -287,7 +341,7 @@ export default function App() {
   }, [config, load, authReady, authStatus.enabled, authStatus.authenticated, urlPersonalMemberId])
 
   async function applyDateFilter() {
-    await loadTasks(config, sprints, dateFrom, dateTo)
+    await loadTasks(config, sprints, dateFrom, dateTo, members)
   }
 
   async function applyPresetPeriod(year = selectedYear, halves = selectedHalves) {
@@ -298,7 +352,7 @@ export default function App() {
     setAdvancedDates(false)
     setDateFrom(preset.from)
     setDateTo(preset.to)
-    await loadTasks(config, sprints, preset.from, preset.to)
+    await loadTasks(config, sprints, preset.from, preset.to, members)
   }
 
   async function applyH1Preset() {
@@ -525,7 +579,7 @@ export default function App() {
               )}
             </div>
           : <>
-              {tab === 'sprint' && <SprintDashboard tasks={tasks} bugTasks={bugTasks} sprintName={officialScopeName} sourceKind="all-sources" cycleTimeMap={cycleTimeMap} cycleMetaMap={cycleMetaMap} cycleTimeNote={cycleTimeNote} />}
+              {tab === 'sprint' && <SprintDashboard tasks={tasks} bugTasks={bugTasks} sprintName={officialScopeName} sourceKind="all-sources" cycleTimeMap={cycleTimeMap} cycleMetaMap={cycleMetaMap} cycleTimeNote={cycleTimeNote} timeEntries={timeEntries} timeEntriesAvailable={timeEntriesAvailable} carriedOverTasks={carriedOverTasks} />}
               {tab === 'team' && (personalOnly || canSeeAllView) && (
                 <MemberDashboard
                   members={members}
@@ -534,6 +588,9 @@ export default function App() {
                   assigneeFilter={assigneeFilter}
                   cycleTimeMap={cycleTimeMap}
                   cycleMetaMap={cycleMetaMap}
+                  timeEntries={timeEntries}
+                  timeEntriesAvailable={timeEntriesAvailable}
+                  carriedOverTasks={carriedOverTasks}
                   personalMemberId={effectivePersonalMemberId}
                   personalOnly={personalOnly}
                   manualDataWritable={canSeeAllView && !personalOnly}

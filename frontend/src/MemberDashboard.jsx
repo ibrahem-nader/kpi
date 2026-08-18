@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts'
 import { Card, SectionTitle, KpiRow, ScoreBadge, Avatar, StatRow, HelpLabel, TaskListModal } from './components.jsx'
-import { buildEstimateAccuracyBreakdown, calcMemberKPIs, classifyTaskType, getWorkTypeHelp } from './kpi.js'
+import { buildEstimateAccuracyBreakdown, buildTrackedMsMaps, calcMemberKPIs, classifyTaskType, getWorkTypeHelp } from './kpi.js'
 
 const ACCENT = '#4f7cff'
 const COMPETENCY_STORAGE_KEY = 'kpi_manual_competencies_v1'
@@ -372,10 +372,10 @@ function ManualCompetencyEditor({ member, values = {}, onLevelChange, onTextChan
   )
 }
 
-function MemberCard({ member, index, tasks, bugTasks, onSelect, selected, cycleTimeMap = {}, cycleMetaMap = {}, manualCompetencies = {}, manualKpis = {}, clickable = true, showPersonalPageButton = true }) {
+function MemberCard({ member, index, tasks, bugTasks, onSelect, selected, cycleTimeMap = {}, cycleMetaMap = {}, manualCompetencies = {}, manualKpis = {}, trackedMsByTask = null, trackedMsByUser = null, carriedOverTasks = [], clickable = true, showPersonalPageButton = true }) {
   const [taskListState, setTaskListState] = useState(null)
-  const kpi = useMemo(() => calcMemberKPIs(member.id, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies, manualKpis), [member, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies, manualKpis])
-  const estimateBreakdownTasks = useMemo(() => buildEstimateAccuracyBreakdown(member.id, tasks, bugTasks), [member.id, tasks, bugTasks])
+  const kpi = useMemo(() => calcMemberKPIs(member.id, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies, manualKpis, trackedMsByTask, trackedMsByUser, carriedOverTasks), [member, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies, manualKpis, trackedMsByTask, trackedMsByUser, carriedOverTasks])
+  const estimateBreakdownTasks = useMemo(() => buildEstimateAccuracyBreakdown(member.id, tasks, bugTasks, trackedMsByTask, carriedOverTasks), [member.id, tasks, bugTasks, trackedMsByTask, carriedOverTasks])
 
   return (
     <>
@@ -477,6 +477,7 @@ function MemberCard({ member, index, tasks, bugTasks, onSelect, selected, cycleT
       </div>
       <div style={{ marginTop: 6, fontSize: 10, color: 'var(--text3)' }}>
         parent {kpi.parentEstimatedHours}h/{kpi.parentTrackedHours}h · subtasks {kpi.subtaskEstimatedHours}h/{kpi.subtaskTrackedHours}h
+        {kpi.carriedOverTrackedHours > 0 && ` · +${kpi.carriedOverTrackedHours}h on carried-over tasks`}
       </div>
     </div>
     <TaskListModal
@@ -490,9 +491,9 @@ function MemberCard({ member, index, tasks, bugTasks, onSelect, selected, cycleT
   )
 }
 
-function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap = {}, manualCompetencies = {}, manualKpis = {}, onCompetencyChange, onClearCompetencies, onManualKpiChange, onClose, readOnly = false, showClose = true }) {
+function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycleMetaMap = {}, manualCompetencies = {}, manualKpis = {}, trackedMsByTask = null, trackedMsByUser = null, carriedOverTasks = [], onCompetencyChange, onClearCompetencies, onManualKpiChange, onClose, readOnly = false, showClose = true }) {
   const [taskListState, setTaskListState] = useState(null)
-  const kpi = useMemo(() => calcMemberKPIs(member.id, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies, manualKpis), [member, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies, manualKpis])
+  const kpi = useMemo(() => calcMemberKPIs(member.id, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies, manualKpis, trackedMsByTask, trackedMsByUser, carriedOverTasks), [member, tasks, bugTasks, cycleTimeMap, cycleMetaMap, manualCompetencies, manualKpis, trackedMsByTask, trackedMsByUser, carriedOverTasks])
 
   const radarData = [
     { subject: 'Delivery', value: kpi.deliveryScore || 0, fullMark: 5 },
@@ -722,7 +723,10 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
         <div>
           <SectionTitle>Time</SectionTitle>
           <StatRow label="Estimated" value={`${kpi.estimatedHours}h`} mono />
-          <StatRow label="Tracked" value={`${kpi.trackedHours}h`} mono />
+          <StatRow label="Tracked (this period, all tasks)" value={`${kpi.trackedHours}h`} mono />
+          {kpi.carriedOverTrackedHours > 0 && (
+            <StatRow label="— of which, carried-over tasks" value={`${kpi.carriedOverTrackedHours}h`} mono />
+          )}
           <StatRow label="Parent est / tracked" value={`${kpi.parentEstimatedHours}h / ${kpi.parentTrackedHours}h`} mono />
           <StatRow label="Subtask est / tracked" value={`${kpi.subtaskEstimatedHours}h / ${kpi.subtaskTrackedHours}h`} mono />
           <StatRow label="Estimate accuracy" value={kpi.estimateAccuracyPct !== null ? `${kpi.estimateAccuracyPct}%` : '—'} mono />
@@ -755,7 +759,11 @@ function MemberDetail({ member, index, tasks, bugTasks, cycleTimeMap = {}, cycle
   )
 }
 
-export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycleTimeMap = {}, cycleMetaMap = {}, personalMemberId = null, personalOnly = false, manualDataWritable = true, periodKey = 'default' }) {
+export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycleTimeMap = {}, cycleMetaMap = {}, timeEntries = [], timeEntriesAvailable = false, carriedOverTasks = [], personalMemberId = null, personalOnly = false, manualDataWritable = true, periodKey = 'default' }) {
+  const { byTask: trackedMsByTask, byUser: trackedMsByUser } = React.useMemo(
+    () => timeEntriesAvailable ? buildTrackedMsMaps(timeEntries) : { byTask: null, byUser: null },
+    [timeEntries, timeEntriesAvailable]
+  )
   const [selectedMember, setSelectedMember] = React.useState(null)
   const [manualCompetencyByPeriod, setManualCompetencyByPeriod] = React.useState(() => ({ default: loadManualCompetencies() }))
   const [manualKpiByPeriod, setManualKpiByPeriod] = React.useState(() => ({ default: loadManualKpiScores() }))
@@ -1021,6 +1029,9 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
           selected
           cycleTimeMap={cycleTimeMap}
           cycleMetaMap={cycleMetaMap}
+          trackedMsByTask={trackedMsByTask}
+          trackedMsByUser={trackedMsByUser}
+          carriedOverTasks={carriedOverTasks}
           manualCompetencies={manualCompetencyMap[personalMember.id] || {}}
           manualKpis={manualKpiMap[personalMember.id] || {}}
           clickable={false}
@@ -1035,6 +1046,9 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
           bugTasks={bugTasks}
           cycleTimeMap={cycleTimeMap}
           cycleMetaMap={cycleMetaMap}
+          trackedMsByTask={trackedMsByTask}
+          trackedMsByUser={trackedMsByUser}
+          carriedOverTasks={carriedOverTasks}
           manualCompetencies={manualCompetencyMap[selectedMember.id] || {}}
           manualKpis={manualKpiMap[selectedMember.id] || {}}
           onCompetencyChange={updateCompetency}
@@ -1058,6 +1072,9 @@ export function MemberDashboard({ members, tasks, bugTasks, assigneeFilter, cycl
               selected={selectedMember?.id === m.id}
               cycleTimeMap={cycleTimeMap}
               cycleMetaMap={cycleMetaMap}
+              trackedMsByTask={trackedMsByTask}
+              trackedMsByUser={trackedMsByUser}
+              carriedOverTasks={carriedOverTasks}
               manualCompetencies={manualCompetencyMap[m.id] || {}}
               manualKpis={manualKpiMap[m.id] || {}}
             />

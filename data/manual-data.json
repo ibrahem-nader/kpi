@@ -1,0 +1,19 @@
+{
+  "periods": {
+    "default": {
+      "competencies": {},
+      "manualKpis": {
+        "87843433": {
+          "codeQualityReviewScore": 3
+        },
+        "152554616": {
+          "codeQualityReviewScore": 3
+        },
+        "200582305": {
+          "codeQualityReviewScore": 2
+        }
+      }
+    }
+  },
+  "updatedAt": "2026-08-18T12:50:00.113Z"
+}
